@@ -1,3 +1,8 @@
+# Modules
+models/fuzzy_layers
+models/fuzzy_pooling
+models/keras-unet-collection
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
