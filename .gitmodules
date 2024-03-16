@@ -1,0 +1,9 @@
+[submodule "models/fuzzy_pooling"]
+	path = models/fuzzy_pooling
+	url = https://github.com/JackonLiu/Fuzzy_Pooling.git
+[submodule "models/fuzzy_layers"]
+	path = models/fuzzy_layers
+	url = https://github.com/kenoma/KerasFuzzy.git
+[submodule "models/keras-unet-collection"]
+	path = models/keras-unet-collection
+	url = https://github.com/yingkaisha/keras-unet-collection.git
