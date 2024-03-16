@@ -35,7 +35,7 @@ class MultiConv(Layer, IName):
     def __init__(self,
             n_channels: int | Sequence[int],
             n_conv_layers: int = 2,
-            kernel_size: int = 3,
+            kernel: int = 3,
             batch_norm: Optional[Layer] = None,
             activation: Layer = ReLU(),
             **kwargs,
@@ -43,7 +43,7 @@ class MultiConv(Layer, IName):
         super().__init__(**kwargs)
         all_n_channels = repeat_last_up_to(n_channels, n_conv_layers)
         self._layers = Sequential(list(interleave(
-            (Conv2D(curr_n_channels, kernel_size, bias_flag=not batch_norm, **kwargs) for curr_n_channels in all_n_channels),
+            (Conv2D(curr_n_channels, kernel, bias_flag=not batch_norm, **kwargs) for curr_n_channels in all_n_channels),
             repeat(batch_norm) if batch_norm else [],
             repeat(activation),
         )))
@@ -79,8 +79,8 @@ class DecoderUnit(Layer):
 
 class Encoder(Layer, IDepth, IName):
     def __init__(self,
-            pooling: Layer = MaxPooling2D,
-            depth=4,
+            pooling: Layer = MaxPooling2D(),
+            depth: int = 4,
             kernel: int | Sequence[int] = 3,  # INFO: right now, sequence not supported
             **kwargs
         ):
