@@ -120,7 +120,7 @@ class Decoder(Layer, IDepth, IName):
         ]
 
     def __call__(self, x, to_cats):
-        for decode, to_cat in zip(self.decoder_units, to_cats):
+        for decode, to_cat in zip(self.decoder_units, reversed(to_cats)):
             x = decode(x, to_cat)
         return x
 
