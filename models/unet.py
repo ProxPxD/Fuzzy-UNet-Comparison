@@ -18,7 +18,7 @@ class UNet(Layer):
         self.bottle_neck = BottleNeck(depth=depth, n_conv_layers=n_conv_layers, activation=activation,                          **kwargs)
 
     def __call__(self, input):
-        x, to_cat = self.encode(input)
+        x, to_cats = self.encode(input)
         x = self.bottle_neck(x)
-        x = self.decode(x, to_cat)
+        x = self.decode(x, to_cats)
         return x
