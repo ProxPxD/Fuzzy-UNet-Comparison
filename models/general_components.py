@@ -53,29 +53,29 @@ class MultiConv(Layer, IName):
 
 
 class EncoderUnit(Layer):
-    def __init__(self, pooling: Layer = MaxPooling2D(), after_layer: Layer = Layer(), **kwargs):
+    def __init__(self, pooling: Layer = MaxPooling2D(), before_link_layer: Layer = Layer(), **kwargs):
         super().__init__(**kwargs)
         self.mc = MultiConv(**kwargs)
         self.pooling = pooling
-        self.after_layer = after_layer
+        self.before_link_layer = before_link_layer
 
     def __call__(self, inputs):
         convoluted = self.mc(inputs)
         x_encoded = self.pooling(convoluted)
-        postprocessed = self.after_layer(convoluted)
+        postprocessed = self.before_link_layer(convoluted)
         return x_encoded, postprocessed
 
 
 class DecoderUnit(Layer):
-    def __init__(self, up_sampling: Layer = UpSampling2D(), before_layer: Layer = Layer(), **kwargs):
+    def __init__(self, up_sampling: Layer = UpSampling2D(), after_link_layer: Layer = Layer(), **kwargs):
         super().__init__(**kwargs)
         self.up_sample = up_sampling
         self.mc = MultiConv(**kwargs)
-        self.before_layer = before_layer
+        self.after_link_layer = after_link_layer
 
     def __call__(self, x, to_link):
         up_sampled = self.up_sample(x)
-        preprocessed = self.before_layer(to_link)
+        preprocessed = self.after_link_layer(to_link)
         cated = concatenate([up_sampled, preprocessed], axis=3)  # TODO: check axis
         y = self.mc(cated)
         return y
