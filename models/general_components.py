@@ -53,7 +53,11 @@ class MultiConv(Layer, IName):
 
 
 class EncoderUnit(Layer):
-    def __init__(self, pooling: Layer = MaxPooling2D(), before_link: Layer = Layer(), **kwargs):
+    def __init__(self,
+            pooling: Layer = MaxPooling2D(),
+            before_link: Layer = Layer(),
+            **kwargs
+        ):
         super().__init__(**kwargs)
         self.mc = MultiConv(**kwargs)
         self.pooling = pooling
@@ -67,7 +71,11 @@ class EncoderUnit(Layer):
 
 
 class DecoderUnit(Layer):
-    def __init__(self, up_sampling: Layer = UpSampling2D(), after_link: Layer = Layer(), **kwargs):
+    def __init__(self,
+            up_sampling: Layer = UpSampling2D(),
+            after_link: Layer = Layer(),
+            **kwargs
+        ):
         super().__init__(**kwargs)
         self.up_sample = up_sampling
         self.mc = MultiConv(**kwargs)
