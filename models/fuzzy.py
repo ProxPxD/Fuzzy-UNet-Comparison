@@ -1,6 +1,6 @@
-from keras import backend as K
-from tensorflow import keras
 import tensorflow as tf
+from keras import backend as K
+from keras.layers import Layer, concatenate
 
 Shape = tuple[int, ...]
 
@@ -17,7 +17,7 @@ class FuzzyOperations:
         return val
 
 
-class FuzzyLayer(keras.layers.Layer, FuzzyOperations):
+class FuzzyLayer(Layer, FuzzyOperations):
 
     def __init__(self,
             output_dim,
@@ -87,12 +87,12 @@ class FuzzyLayer(keras.layers.Layer, FuzzyOperations):
     #     return tuple(input_shape[:-1]) + (self.output_dim,)
 
 
-class DefuzzyLayer(keras.layers.Layer, FuzzyOperations):
+class DefuzzyLayer(Layer, FuzzyOperations):
 
     def __init__(self,
-                 output_dim,
-                 initial_rules_outcomes=None,
-                  input_shape: tuple[int, ...] = None,
+            output_dim,
+            initial_rules_outcomes=None,
+            input_shape: tuple[int, ...] = None,
             input_dim: int = None,
             **kwargs
         ):
@@ -111,7 +111,7 @@ class DefuzzyLayer(keras.layers.Layer, FuzzyOperations):
             outcomes_init_values = tf.random_uniform_initializer()(shape=(input_shape[-1], self.output_dim), dtype="float32")
         else:
             outcomes_init_values = tf.convert_to_tensor(self.initial_rules_outcomes, dtype="float32")
-        return tf.Variable(initial_value = outcomes_init_values, trainable=True)
+        return tf.Variable(initial_value=outcomes_init_values, trainable=True)
 
     def build(self, input_shape):
         self.input_dimensions = list(input_shape)[:-1:-1]
@@ -132,3 +132,115 @@ class DefuzzyLayer(keras.layers.Layer, FuzzyOperations):
     #
     # def get_config(self):
     #     return {"rules_outcome": self.rules_outcome.numpy()}
+
+
+class FuzzyPooling(Layer):
+    """Custom layer for Type-2 Fuzzy logic based pooling"""
+    def __init__(self, kernel: int = 3, stride: int = 1, channels: int = None, dims: Shape = None):
+        super().__init__()
+        self.pool = kernel
+        self.stride = stride
+        self.n = kernel**2
+        self.h = (self.n + 1)//2
+        self.channels = channels
+        self.dims = dims
+
+    @property
+    def rows(self) -> int:
+        return self.dims[0]
+
+    @property
+    def cols(self) -> int:
+        return self.dims[1]
+
+    def build(self, input_shape):
+        if not self.channels:
+            self.channels = input_shape[0]
+        if not self.dims:
+            self.dims = input_shape[1:]
+
+    def membership(self, x):
+        h = self.h
+        kmm = x.mean(dim=-1, keepdim=True)
+
+        for k in range(h-1):
+            start = h-k-1
+            end = h+k+1 if self.pool % 2 == 0 else h+k
+            x_partial_mean = tf.reduce_mean(x[..., start:end], axis=-1, keepdims=True)
+            kmm = tf.concat([x_partial_mean, kmm], axis=-1)
+
+        v_avg = kmm.mean(dim=-1, keepdim=True)
+        return kmm, v_avg
+
+    def calculate_fuzzy_variance(self, x, v_avg, eps=1e-4):
+        h = self.h
+        omega = abs(x - v_avg)
+        sigma = omega.mean(dim=-1, keepdim=True)
+
+        for k in range(h-1):
+            start = (h-k-1)
+            end = h+k if h % 2 == 1 else h+k+1
+            partial_mean = tf.reduce_mean(x[..., start:end], axis=-1, keepdims=True)
+            sigma = concatenate([partial_mean, sigma], axis=-1)
+        return sigma + eps
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        self.output_size = self.row // self.pool
+
+        # Since the method does not differentiate between two channels of a single image any more that it
+        # differentiates between two channels of two separate images, it is beneficial to fold the first
+        # two dimensions, ie, batch_size and channels together.
+
+        x = tf.reshape(x, [batch_size * self.channels, *self.dims], name=None)
+        x = tf.image.extract_patches(x,
+                             sizes=[1, self.pool, self.pool, 1],
+                             strides=[1, self.stride, self.stride, 1],
+                             rates=[1, 1, 1, 1],
+                             padding='VALID')
+        x = tf.reshape(x, [-1, self.channels, self.dims[0], self.n * self.dims[1]])
+
+        kmm, v_avg = self.membership(x)
+        sigma = self.var_vec(x, v_avg)
+        avg_pi, thresh = self.delta(x, kmm, sigma)
+
+        pooled = tf.zeros([self.batch * self.channels, self.output_size, self.output_size, 1])
+
+        # Conditions
+        mask_primary = tf.greater_equal(avg_pi[..., self.h-1], thresh)
+        s_condition = tf.less(sigma[..., self.h-1], 0.001)
+        mask_secondary = tf.reduce_sum(tf.cast(~mask_primary & s_condition, tf.float32), axis=-1, keepdims=True)
+        mask_noisy = ~(mask_primary | mask_secondary)
+
+        # pooled operations
+        pooled = tf.where(mask_primary, tf.reduce_mean(x, axis=-1, keepdims=True), pooled)
+        pooled = tf.where(mask_secondary, v_avg, pooled)
+
+        count = tf.reduce_sum(tf.cast(mask_noisy, tf.float32)).numpy()  # Count
+        region = tf.boolean_mask(x, mask_noisy[..., tf.newaxis])  # Region
+        g = tf.boolean_mask(avg_pi, mask_noisy[..., tf.newaxis])  # g
+        denoised = tf.reduce_sum(tf.multiply(g, region), axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
+        denoised = tf.reshape(denoised, [count])  # Denoised
+
+        indices = tf.where(mask_noisy)
+        pooled = tf.tensor_scatter_nd_update(pooled, indices, denoised)
+
+        pooled = tf.reshape(pooled, [self.batch, self.channels, self.output_size, self.output_size])
+        pooled = tf.identity(pooled)
+
+        return pooled
+
+    def delta(self, x, kmm, sigma):
+        h = self.h
+        n = self.n
+
+        # All the next 4 Tensors are of shape (batch*channels, output_size, output_size, h, n)
+        xrep = x.repeat(1, 1, 1, h).view(self.batch*self.channels, self.output_size, self.output_size, h, n)
+        kmmrep = kmm.repeat(1, 1, 1, n).view(self.batch*self.channels, self.output_size, self.output_size, n, h).transpose(3, 4)
+        sigmarep = sigma.repeat(1, 1, 1, n).view(self.batch*self.channels, self.output_size, self.output_size, n, h).transpose(3, 4)
+        pi = tf.exp(-0.5 * tf.square((xrep - kmmrep) / sigmarep))
+
+        max_values = tf.reduce_max(pi, axis=3, keepdims=False)
+        thresh = tf.reduce_min(max_values, axis=3, keepdims=True)
+        avg_pi = tf.reduce_mean(pi, axis=3, keepdims=False)
+        return avg_pi, thresh
