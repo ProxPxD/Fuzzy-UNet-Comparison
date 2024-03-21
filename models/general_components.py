@@ -1,5 +1,5 @@
 from itertools import repeat
-from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union
+from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union, Callable
 
 from keras import Sequential
 from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate
@@ -55,7 +55,7 @@ class MultiConv(Layer, IName):
 class EncoderUnit(Layer):
     def __init__(self,
             pooling: Layer = MaxPooling2D(),
-            before_link: Layer = Layer(),
+            before_link: Layer = Layer,
             **kwargs
         ):
         super().__init__(**kwargs)
