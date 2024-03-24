@@ -1,9 +1,8 @@
 import os
 from collections import Counter
 from typing import Optional, Callable
+
 import tensorflow as tf
-from tensorflow.keras.callbacks import ModelCheckpoint
-from parameters import Parameters
 
 
 class Trainer:
