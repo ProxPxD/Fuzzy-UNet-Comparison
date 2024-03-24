@@ -9,6 +9,7 @@ from more_itertools import interleave, pairwise, last
 from models.utils import repeat_last_up_to
 
 IntPair = Tuple[int, int]
+LayerOrMore = Layer | Sequence[Layer]
 
 
 class IName:
@@ -55,7 +56,7 @@ class MultiConv(Layer, IName):
 class EncoderUnit(Layer):
     def __init__(self,
             pooling: Layer = MaxPooling2D(),
-            before_link: Layer = Layer,
+            before_link: Layer = Layer(),
             **kwargs
         ):
         super().__init__(**kwargs)
@@ -94,6 +95,7 @@ class Encoder(Layer, IDepth, IName):
             pooling: Layer = MaxPooling2D(),
             depth: int = 4,
             kernel: int | Sequence[int] = 3,  # INFO: right now, sequence not supported
+            before_link: LayerOrMore = Layer(),
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
@@ -103,8 +105,9 @@ class Encoder(Layer, IDepth, IName):
                 n_channels=input_size,
                 pooling=pooling,
                 kernel=kernel,
+                before_link=curr_before_link,
                 **kwargs
-            ) for input_size, output_size in self.shapes
+            ) for (input_size, output_size), curr_before_link in zip(self.shapes, repeat_last_up_to(before_link))
         ]
 
     def __call__(self, inputs):
@@ -120,6 +123,7 @@ class Decoder(Layer, IDepth, IName):
     def __init__(self,
             up_sampling: Layer = UpSampling2D(),
             depth: int = 4,
+            after_link: LayerOrMore = Layer(),
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
@@ -127,8 +131,9 @@ class Decoder(Layer, IDepth, IName):
             DecoderUnit(
                 n_channels=(output_size, input_size),
                 up_sampling=up_sampling,
+                after_link=curr_after_link,
                 **kwargs
-            ) for input_size, output_size in reversed(self.shapes)
+            ) for (input_size, output_size), curr_after_link in reversed(zip(self.shapes, repeat_last_up_to(after_link, self.depth)))
         ]
 
     def __call__(self, x, to_cats):
