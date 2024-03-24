@@ -1,5 +1,5 @@
 from itertools import repeat
-from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union, Callable
+from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union
 
 from keras import Sequential
 from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate

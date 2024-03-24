@@ -3,28 +3,31 @@ from collections import Counter
 from typing import Optional, Callable
 
 import tensorflow as tf
+from torch.utils.tensorboard import SummaryWriter
 
 
 class Trainer:
     def __init__(self,
-                 model,
-                 *,
-                 model_name: str = 'model',
-                 epochs: int = 5,
-                 get_model_path: Callable[[str, int, int], str] = lambda name, epoch, iteration: f'{name}_e{epoch}',
-                 save_every_n_epoch: int = 1,
-                 save_every_n_iteration: int = None,
-                 validate_every_n_epoch: int = None,
-                 optimizer = None,
-                 metrics = None,
-                 loss = None,
-                 logger = print,
-                 device: str = None,
-                 verbose: Optional[int] = 1,
-                 batch_size: int = None,
-                **kwargs
+            writer: SummaryWriter,
+            *,
+            model=None,
+            model_name: str = 'model',
+            epochs: int = 5,
+            get_model_path: Callable[[str, int, int], str] = lambda name, epoch, iteration: f'{name}_e{epoch}',
+            save_every_n_epoch: int = 1,
+            save_every_n_iteration: int = None,
+            validate_every_n_epoch: int = None,
+            optimizer = None,
+            metrics = None,
+            loss = None,
+            logger = print,
+            device: str = None,
+            verbose: Optional[int] = 1,
+            batch_size: int = None,
+            **kwargs
         ):
         self.model = model
+        self.writer = writer
         self.model_name = model_name
         self.epochs = epochs
         self.get_model_path = get_model_path
@@ -43,18 +46,27 @@ class Trainer:
         self.epoch = None
         self.iteration = None
 
-        self.model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+        self.compile()
 
-    def _is_in_right_iteration(self):
+    def set_model(self, model, name: str = None) -> None:
+        self.model = model
+        self.model_name = name or self.model_name
+        self.compile()
+
+    def compile(self) -> None:
+        if self.model:
+            self.model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+
+    def _is_in_right_iteration(self) -> bool:
         return self.iteration % 1 == 0
 
-    def _verbosely_print(self, required_verbose, to_print, and_cond=lambda: True):
+    def _verbosely_print(self, required_verbose, to_print, and_cond=lambda: True) -> None:
         if self.verbose >= required_verbose and and_cond():
             self.logger(to_print)
 
     def _count(self, full_label: str, to_write):
         self.counter[full_label] += 1
-        # TODO: Add writing to tensorboard
+        self.writer.add_scalar(full_label, to_write, self.counter.get(full_label))
 
     def train(self, train, test, validation=None, epochs=None, verbose=None):
         self._verbosely_print(1, f'Starting running on {self.device}')
