@@ -5,8 +5,7 @@ from itertools import product
 from pathlib import Path
 from typing import Callable, Iterable
 
-from constants import L
-from constants import Params
+from constants import Params, L, Other
 
 path_like = Path | str
 
@@ -70,6 +69,6 @@ def normalize_picture(img: np.ndarray, resize=lambda img: img):
 
 
 def get_normalize(labels):
-    resize = get_resize(Parameters.normalized_image_size[1:])
+    resize = get_resize(Other.normalized_image_size[1:])
     label_dict = {tuple(row[L.COLOR]): idx for idx, row in labels.iterrows()}
     return lambda X, mask: (normalize_picture(X, resize=resize), normalize_mask(mask, label_dict, resize=resize))
