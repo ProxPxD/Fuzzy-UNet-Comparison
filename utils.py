@@ -46,29 +46,31 @@ def path_to_numpy(iterable: Iterable, normalize: Callable[[np.ndarray, np.ndarra
 
 def get_resize(shape):
     def resize(img):
-        return cv2.resize(img, shape[::-1])
+        img = img.transpose((2, 0, 1))
+        img = cv2.resize(img, shape[::-1])
+        img.transpose((1, 2, 0))
+        return img
     return resize
 
 
-def normalize_mask(mask, label_dict, resize=lambda img: img):
+def normalize_mask(mask, label_dict, resize: Callable = None):
+    resize = resize or (lambda img: img)
     flat_mask = mask.reshape(-1, mask.shape[-1])
     label_indices = np.array([label_dict[tuple(pixel)] for pixel in flat_mask], dtype=np.int32)
     mask = label_indices.reshape(tuple(mask.shape[:-1]) + (1,))
-    mask = mask.transpose((2, 0, 1))
     mask = resize(mask)
-    mask = mask.reshape(mask.shape[1:])
+    # mask = mask.reshape(mask.shape[1:])  # TODO: potential bug source
     return mask
 
 
-def normalize_picture(img: np.ndarray, resize=lambda img: img):
+def normalize_picture(img: np.ndarray, resize: Callable = None):
+    resize = resize or (lambda img: img)
     img = img.astype(np.float32) / 255
-    img = img.transpose((2, 0, 1))
     img = resize(img)
-    img = img.transpose((1, 2, 0))
     return img
 
 
 def get_normalize(labels):
-    resize = get_resize(Other.normalized_image_size[1:])
+    resize = None  # get_resize(Other.normalized_image_size[1:])
     label_dict = {tuple(row[L.COLOR]): idx for idx, row in labels.iterrows()}
     return lambda X, mask: (normalize_picture(X, resize=resize), normalize_mask(mask, label_dict, resize=resize))
