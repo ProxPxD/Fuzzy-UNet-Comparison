@@ -12,7 +12,7 @@ class CamSeqSequence(Sequence):
         self.path_tuples = path_tuples
         self.normalize = normalize
         self.image_transposition = (2, 0, 1)
-        self.index = -1
+        self.index = 0
 
     def __len__(self):
         return len(self.path_tuples)
