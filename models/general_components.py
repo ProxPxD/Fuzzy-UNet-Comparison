@@ -150,3 +150,43 @@ class BottleNeck(Layer, IName, IDepth):
     def __call__(self, x):
         return self.mc(x)
 
+
+class LinkConjunct(Layer, IName, IDepth):
+    def __init__(self,
+            link_layer: LayerOrMore = Layer(),
+            depth: int = 3,
+            **kwargs
+        ):
+        super().__init__(depth=depth, **kwargs)
+        self.link_layers = list(repeat_last_up_to(link_layer, self.depth + 1))
+        repeat_last_up_to(link_layer, self.depth + 1)
+
+    def __call__(self, outer, to_cats):
+        return self.link_layers[0](outer), [link_layer(to_cat) for link_layer, to_cat in zip(self.link_layers, to_cats)]
+
+
+class UNet(Layer, IDepth):
+    def __init__(self,
+            depth: int = 3,
+            n_conv_layers: int = 2,
+            pooling: Layer = MaxPooling2D(),
+            up_sampling: Layer = UpSampling2D(),
+            activation: Layer = ReLU(),
+            link_layers: LayerOrMore = Layer(),
+            **kwargs
+        ):
+        super().__init__(depth=depth, **kwargs)
+        self.encode = Encoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, pooling=pooling,         **kwargs)
+        self.decode = Decoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, up_sampling=up_sampling, **kwargs)
+        # self.conjunct = LinkConjunct(depth=depth,                                                      link_layers=link_layers, **kwargs)
+        self.bottle_neck = BottleNeck(depth=depth, n_conv_layers=n_conv_layers, activation=activation,                          **kwargs)
+
+    def __call__(self, input):
+        x, to_cats = self.encode(input)
+        # x, to_links = self.encode(input)
+        # outer, to_cats = self.conjunct(input, to_links)  # TODO: what to do with the outer as for the paper of Galina et al.
+        x = self.bottle_neck(x)
+        x = self.decode(x, to_cats)
+        return x
+
+

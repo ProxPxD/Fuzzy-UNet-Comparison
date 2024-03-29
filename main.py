@@ -10,7 +10,7 @@ from trainer_tf import Trainer
 
 labels = analysis.load_labels()
 normalize = utils.get_normalize(labels)
-train_loader, val_loader, test_loader = dataset.get_dataloaders(normalize)
+train_loader, val_loader, test_loader = dataset.get_data_generators(normalize)
 writer = SummaryWriter(Params.log_dir)
 to_analyze = ModelFactory.get_models_to_analyze(space)
 trainer = Trainer(

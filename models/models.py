@@ -1,10 +1,10 @@
 from itertools import chain, product
 
-from keras import Layer
+from keras.layers import Layer
 from more_itertools import repeatfunc
 
-from general_unet import UNet
-from fuzzy import DefuzzyLayer, FuzzyLayer, FuzzyPooling
+from fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling
+from models.general_components import UNet
 
 
 def gen_param_set(param_space):
@@ -21,8 +21,8 @@ class ModelFactory:
         ):
         kwargs = {}
         if fuzzy_link:
-            kwargs['before_link'] = chain(repeatfunc(FuzzyLayer,   n_fuzzy_layers), Layer())
-            kwargs['after_link']  = chain(repeatfunc(DefuzzyLayer, n_fuzzy_layers), Layer())
+            kwargs['before_link'] = tuple(chain(repeatfunc(FuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
+            kwargs['after_link']  = tuple(chain(repeatfunc(DefuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
         if fuzzy_pooling:  # TODO: consider setting only in some places?
             kwargs['pooling'] = FuzzyPooling()
         return UNet(**kwargs)
