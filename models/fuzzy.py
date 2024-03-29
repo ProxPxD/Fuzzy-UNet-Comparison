@@ -17,7 +17,7 @@ class FuzzyOperations:
         return val
 
 
-class FuzzyLayer(Layer, FuzzyOperations):
+class FuzzifyLayer(Layer, FuzzyOperations):
 
     def __init__(self,
             output_dim: Shape = None,
@@ -36,7 +36,7 @@ class FuzzyLayer(Layer, FuzzyOperations):
             self.output_dims = output_dim if output_dim else self.input_dims
             self.centers = self._create_centers(input_shape)
             self.a = self._create_scaling_factors(input_shape)
-        super(FuzzyLayer, self).__init__(**kwargs)
+        super(FuzzifyLayer, self).__init__(**kwargs)
 
     @classmethod
     def _create_input_dimensions(cls, input_shape: Shape):
@@ -61,7 +61,7 @@ class FuzzyLayer(Layer, FuzzyOperations):
         self.output_dims = self.output_dim if self.output_dim else self.input_dims
         self.centers = self._create_centers(input_shape)
         self.a = self._create_scaling_factors(input_shape)
-        super(FuzzyLayer, self).build(input_shape)
+        super(FuzzifyLayer, self).build(input_shape)
 
     def call(self, x):
         x = self.expand(x, self.output_dims, axis=-1)
@@ -88,7 +88,7 @@ class FuzzyLayer(Layer, FuzzyOperations):
     #     return tuple(input_shape[:-1]) + (self.output_dim,)
 
 
-class DefuzzyLayer(Layer, FuzzyOperations):
+class DefuzzifyLayer(Layer, FuzzyOperations):
 
     def __init__(self,
             output_dim: Shape = None,
@@ -105,7 +105,7 @@ class DefuzzyLayer(Layer, FuzzyOperations):
             self.input_dims = list(input_shape)[:-1:-1]
             self.output_dims = output_dim if output_dim else self.input_dims
             self.rules_outcome = self._create_rules_outcome
-        super(DefuzzyLayer, self).__init__(**kwargs)
+        super(DefuzzifyLayer, self).__init__(**kwargs)
 
     def _create_rules_outcome(self, input_shape):
         if self.initial_rules_outcomes is None:
@@ -118,7 +118,7 @@ class DefuzzyLayer(Layer, FuzzyOperations):
         self.input_dims = list(input_shape)[:-1:-1]
         self.output_dims = self.output_dims if self.output_dims else self.input_dims
         self.rules_outcome = self._create_rules_outcome
-        super(DefuzzyLayer, self).build(input_shape)
+        super(DefuzzifyLayer, self).build(input_shape)
 
     def __call__(self, x):
         x = self.expand(x, self.output_dims, axis=-1)
