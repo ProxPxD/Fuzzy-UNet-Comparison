@@ -249,6 +249,7 @@ class FuzzyPooling(Layer):
         return avg_pi, thresh
 
 
+
 class FuzzyLayer(Layer):
     def __init__(self, fuzzify: Layer, defuzzify: Layer):
         super().__init__()

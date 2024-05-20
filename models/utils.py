@@ -1,6 +1,7 @@
-from typing import Sequence
+from itertools import chain
+from typing import Sequence, Any, Iterable, Callable
 
-from more_itertools import repeat_last, take
+from more_itertools import repeat_last, take, repeatfunc
 
 
 def to_list(elem_or_more):
@@ -13,6 +14,12 @@ def repeat_last_up_to(elems, up_to=None):
     return take(up_to, all_n_channels) if up_to is not None else all_n_channels
 
 
+def fill_upto(base: Any, to_fill: Any, upto: int) -> Iterable[Any]:
+    return chain(repeat_last_up_to(base), repeat_last_up_to(to_fill))
+
+
+def fill_func_upto(func: Callable, n: int, fill_func: Callable, upto) -> Iterable[Any]:
+    return chain(repeatfunc(func, n), repeatfunc(fill_func, upto-n))
 
     # kernels = self._init_kernels(kernel, kwargs)
 

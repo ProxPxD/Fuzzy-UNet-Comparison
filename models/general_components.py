@@ -3,9 +3,9 @@ from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union
 
 from keras import Sequential
 from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate, ReLU
-from more_itertools import interleave, pairwise, last
+from more_itertools import interleave, pairwise, last, padded
 
-from models.utils import repeat_last_up_to
+from models.utils import repeat_last_up_to, to_list
 import keras.backend as K
 
 IntPair = Tuple[int, int]
@@ -85,7 +85,7 @@ class DecoderUnit(Layer):
 
 
 class Link(Layer, IName, IDepth):
-    def __init__(self, *, layers: LayerOrMore = None):
+    def __init__(self, layers: LayerOrMore = None):
         super().__init__()
         self.layers = layers or []
         n = len(self.layers)
@@ -149,7 +149,7 @@ class Decoder(IDepth, IName, Layer):
 class Linkage(IName, IDepth, Layer):
     def __init__(self, links: LayerOrMore = Layer(), depth=4):
         super().__init__()
-        self.links = [Link(layers=link) for link in repeat_last_up_to(links, depth)]
+        self.links = [Link(layers=link) for link in padded(to_list(links), n=depth)]
 
     def __call__(self, xs):
         return [link(x) for link, x in zip(self.links, xs)]

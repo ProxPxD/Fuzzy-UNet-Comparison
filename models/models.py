@@ -1,11 +1,15 @@
-from itertools import chain, product
+from itertools import chain, product, repeat
 
+import keras
 from keras.layers import Layer
-from more_itertools import repeatfunc
+from more_itertools import repeatfunc, take
+from toolz import apply
 
-from models.fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling
-from models.general_components import UNet
+from models.fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling, FuzzyLayer
+from models.general_components import UNet, Link
 from itertools import starmap
+
+from models.utils import fill_func_upto
 
 
 def gen_param_set(param_space):
@@ -15,34 +19,32 @@ def gen_param_set(param_space):
 class ModelFactory:
     @classmethod
     def build(cls,
-            fuzzy_link: bool,
             fuzzy_pooling: bool,
             n_fuzzy_layers: int = 1,
             **layers_kwargs
         ):
         kwargs = {}
-        if fuzzy_link:
-            # kwargs['link_layers'] =
-            kwargs['before_link'] = tuple(chain(repeatfunc(FuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
-            kwargs['after_link']  = tuple(chain(repeatfunc(DefuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
+        if n_fuzzy_layers:
+            to_link = zip(repeatfunc(FuzzifyLayer), repeatfunc(DefuzzifyLayer))
+            to_apply = zip(repeat(keras.Sequential), to_link)
+            kwargs['links'] = take(n_fuzzy_layers, starmap(apply, to_apply))
         if fuzzy_pooling:  # TODO: consider setting only in some places?
             kwargs['pooling'] = FuzzyPooling()
         return UNet(**kwargs)
 
     @classmethod
     def get_name(cls,
-            fuzzy_link: bool,
             fuzzy_pooling: bool,
             n_fuzzy_layers: int = 1,
             **layers_kwargs
         ):
-        if not fuzzy_link and not fuzzy_pooling:
+        if not n_fuzzy_layers and not fuzzy_pooling:
             return 'Crisp'
-        if fuzzy_link and not fuzzy_pooling:
+        if n_fuzzy_layers and not fuzzy_pooling:
             return 'Fuzzy Layer'
-        if not fuzzy_link and fuzzy_pooling:
+        if not n_fuzzy_layers and fuzzy_pooling:
             return 'Fuzzy Pooling'
-        if fuzzy_link and fuzzy_pooling:
+        if n_fuzzy_layers and fuzzy_pooling:
             return 'Full Fuzzy'
         return 'Unnamed'
 
@@ -57,9 +59,8 @@ class ModelFactory:
 bool_space = [True, False]
 
 space = {
-    'fuzzy_link': bool_space,
+    'n_fuzzy_layers': [0, 1],
     'fuzzy_pooling': bool_space,
-    'n_fuzzy_layers': [1],
 }
 
 
