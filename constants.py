@@ -8,7 +8,7 @@ from keras.metrics import Accuracy, Precision, Recall, MeanIoU
 
 @dataclass
 class Paths:
-    DATA = Path('../input/img-seg-comp/data/data')
+    DATA = Path(__file__).parent / 'data/data'
     INPUT_DATA = DATA / 'input'
     INPUT_IMGAGES = INPUT_DATA / 'img'
     INPUT_LABELS = INPUT_DATA / 'label_colors.txt'

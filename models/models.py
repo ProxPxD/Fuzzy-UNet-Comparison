@@ -3,8 +3,9 @@ from itertools import chain, product
 from keras.layers import Layer
 from more_itertools import repeatfunc
 
-from fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling
+from models.fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling
 from models.general_components import UNet
+from itertools import starmap
 
 
 def gen_param_set(param_space):
@@ -21,6 +22,7 @@ class ModelFactory:
         ):
         kwargs = {}
         if fuzzy_link:
+            # kwargs['link_layers'] =
             kwargs['before_link'] = tuple(chain(repeatfunc(FuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
             kwargs['after_link']  = tuple(chain(repeatfunc(DefuzzifyLayer, n_fuzzy_layers), repeatfunc(Layer, 1)))
         if fuzzy_pooling:  # TODO: consider setting only in some places?
@@ -45,9 +47,9 @@ class ModelFactory:
         return 'Unnamed'
 
     @classmethod
-    def get_models_to_analyze(cls, space):
+    def get_models_to_analyze(cls, space: dict) -> dict[str, UNet]:
         return {
-            ModelFactory.get_name(*params): ModelFactory.build(*params)
+            ModelFactory.get_name(**params): ModelFactory.build(**params)
             for params in gen_param_set(space)
         }
 

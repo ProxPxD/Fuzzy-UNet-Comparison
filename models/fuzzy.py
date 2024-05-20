@@ -1,6 +1,7 @@
 import tensorflow as tf
 from keras import backend as K
 from keras.layers import Layer, concatenate
+from toolz import compose, compose_left
 
 Shape = tuple[int, ...]
 
@@ -246,3 +247,15 @@ class FuzzyPooling(Layer):
         thresh = tf.reduce_min(max_values, axis=3, keepdims=True)
         avg_pi = tf.reduce_mean(pi, axis=3, keepdims=False)
         return avg_pi, thresh
+
+
+class FuzzyLayer(Layer):
+    def __init__(self, fuzzify: Layer, defuzzify: Layer):
+        super().__init__()
+        self.fuzzify = fuzzify
+        self.defuzzify = defuzzify
+
+    def __call__(self, x):
+        x = self.fuzzify(x)
+        x = self.defuzzify(x)
+        return x

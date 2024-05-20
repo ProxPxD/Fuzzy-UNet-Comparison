@@ -2,11 +2,11 @@ from itertools import repeat
 from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union
 
 from keras import Sequential
-from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate
-from keras.layers.activations import ReLU
+from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate, ReLU
 from more_itertools import interleave, pairwise, last
 
 from models.utils import repeat_last_up_to
+import keras.backend as K
 
 IntPair = Tuple[int, int]
 LayerOrMore = Layer | Sequence[Layer]
@@ -32,7 +32,7 @@ class IDepth:
         return last(self.shapes)[1]
 
 
-class MultiConv(Layer, IName):
+class MultiConv(IName, Layer):
     def __init__(self,
             n_channels: int | Sequence[int],
             n_conv_layers: int = 2,
@@ -56,38 +56,46 @@ class MultiConv(Layer, IName):
 class EncoderUnit(Layer):
     def __init__(self,
             pooling: Layer = MaxPooling2D(),
-            before_link: Layer = Layer(),
             **kwargs
         ):
         super().__init__(**kwargs)
         self.mc = MultiConv(**kwargs)
         self.pooling = pooling
-        self.before_link = before_link
 
     def __call__(self, inputs):
         convoluted = self.mc(inputs)
         x_encoded = self.pooling(convoluted)
-        postprocessed = self.before_link(convoluted)
-        return x_encoded, postprocessed
+        return x_encoded, x_encoded
 
 
 class DecoderUnit(Layer):
     def __init__(self,
             up_sampling: Layer = UpSampling2D(),
-            after_link: Layer = Layer(),
             **kwargs
         ):
         super().__init__(**kwargs)
         self.up_sample = up_sampling
         self.mc = MultiConv(**kwargs)
-        self.after_link = after_link
 
     def __call__(self, x, to_link):
         up_sampled = self.up_sample(x)
-        preprocessed = self.after_link(to_link)
-        cated = concatenate([up_sampled, preprocessed], axis=3)  # TODO: check axis
-        y = self.mc(cated)
+        # cated = concatenate([up_sampled, preprocessed], axis=3)  # TODO: check axis
+        y = self.mc(up_sampled)
         return y
+
+
+class Link(Layer, IName, IDepth):
+    def __init__(self, *, layers: LayerOrMore = None):
+        super().__init__()
+        self.layers = layers or []
+        n = len(self.layers)
+        self.ws = None if n < 2 else K.ones(n) / n
+
+    def __call__(self, x):
+        match len(self.layers):
+            case 0: return x
+            case 1: return self.layers[0][x]
+            case _: return sum(layer(x)*w/w.sum() for layer, w in zip(self.layers, self.ws))
 
 
 class Encoder(Layer, IDepth, IName):
@@ -95,7 +103,6 @@ class Encoder(Layer, IDepth, IName):
             pooling: Layer = MaxPooling2D(),
             depth: int = 4,
             kernel: int | Sequence[int] = 3,  # INFO: right now, sequence not supported
-            before_link: LayerOrMore = Layer(),
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
@@ -105,25 +112,23 @@ class Encoder(Layer, IDepth, IName):
                 n_channels=input_size,
                 pooling=pooling,
                 kernel=kernel,
-                before_link=curr_before_link,
                 **kwargs
-            ) for (input_size, output_size), curr_before_link in zip(self.shapes, repeat_last_up_to(before_link))
+            ) for input_size, output_size in self.shapes
         ]
 
     def __call__(self, inputs):
         curr_x = inputs
-        x_to_cats = []
+        encodeds = []
         for encode in self.encoder_units:
-            curr_x, x_to_cat = encode(curr_x)
-            x_to_cats.append(x_to_cat)
-        return curr_x, x_to_cats
+            curr_x, encoded = encode(curr_x)
+            encodeds.append(encoded)
+        return curr_x, encodeds
 
 
-class Decoder(Layer, IDepth, IName):
+class Decoder(IDepth, IName, Layer):
     def __init__(self,
             up_sampling: Layer = UpSampling2D(),
             depth: int = 4,
-            after_link: LayerOrMore = Layer(),
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
@@ -131,18 +136,26 @@ class Decoder(Layer, IDepth, IName):
             DecoderUnit(
                 n_channels=(output_size, input_size),
                 up_sampling=up_sampling,
-                after_link=curr_after_link,
                 **kwargs
-            ) for (input_size, output_size), curr_after_link in reversed(zip(self.shapes, repeat_last_up_to(after_link, self.depth)))
+            ) for input_size, output_size in reversed(self.shapes)
         ]
 
-    def __call__(self, x, to_cats):
-        for decode, to_cat in zip(self.decoder_units, reversed(to_cats)):
-            x = decode(x, to_cat)
+    def __call__(self, x, from_links):
+        for decode, from_link in zip(self.decoder_units, reversed(from_links)):
+            x = decode(x, from_link)
         return x
 
 
-class BottleNeck(Layer, IName, IDepth):
+class Linkage(IName, IDepth, Layer):
+    def __init__(self, links: LayerOrMore = Layer(), depth=4):
+        super().__init__()
+        self.links = [Link(layers=link) for link in repeat_last_up_to(links, depth)]
+
+    def __call__(self, xs):
+        return [link(x) for link, x in zip(self.links, xs)]
+
+
+class BottleNeck(IName, IDepth, Layer):
     def __init__(self, depth: int = 4, **kwargs):
         super().__init__(depth=depth, **kwargs)
         self.mc = MultiConv(n_channels=self.last_shape, *kwargs)
@@ -151,42 +164,26 @@ class BottleNeck(Layer, IName, IDepth):
         return self.mc(x)
 
 
-class LinkConjunct(Layer, IName, IDepth):
-    def __init__(self,
-            link_layer: LayerOrMore = Layer(),
-            depth: int = 3,
-            **kwargs
-        ):
-        super().__init__(depth=depth, **kwargs)
-        self.link_layers = list(repeat_last_up_to(link_layer, self.depth + 1))
-        repeat_last_up_to(link_layer, self.depth + 1)
-
-    def __call__(self, outer, to_cats):
-        return self.link_layers[0](outer), [link_layer(to_cat) for link_layer, to_cat in zip(self.link_layers, to_cats)]
-
-
-class UNet(Layer, IDepth):
+class UNet(IDepth, Layer):
     def __init__(self,
             depth: int = 3,
             n_conv_layers: int = 2,
             pooling: Layer = MaxPooling2D(),
             up_sampling: Layer = UpSampling2D(),
             activation: Layer = ReLU(),
-            link_layers: LayerOrMore = Layer(),
+            links: LayerOrMore = Layer(),
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
         self.encode = Encoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, pooling=pooling,         **kwargs)
         self.decode = Decoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, up_sampling=up_sampling, **kwargs)
-        # self.conjunct = LinkConjunct(depth=depth,                                                      link_layers=link_layers, **kwargs)
+        self.linkage = Linkage(depth=depth, links=links)
         self.bottle_neck = BottleNeck(depth=depth, n_conv_layers=n_conv_layers, activation=activation,                          **kwargs)
 
     def __call__(self, input):
-        x, to_cats = self.encode(input)
-        # x, to_links = self.encode(input)
-        # outer, to_cats = self.conjunct(input, to_links)  # TODO: what to do with the outer as for the paper of Galina et al.
+        x, encoded = self.encode(input)
+        link_mapped = self.linkage(encoded)
         x = self.bottle_neck(x)
-        x = self.decode(x, to_cats)
+        x = self.decode(x, link_mapped)
         return x
-
 

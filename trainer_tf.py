@@ -3,12 +3,12 @@ from collections import Counter
 from typing import Optional, Callable
 
 import tensorflow as tf
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter, FileWriter
 
 
 class Trainer:
     def __init__(self,
-            writer: SummaryWriter,
+            writer: FileWriter,
             *,
             model=None,
             model_name: str = 'model',

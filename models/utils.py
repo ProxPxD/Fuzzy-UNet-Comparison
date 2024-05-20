@@ -3,6 +3,10 @@ from typing import Sequence
 from more_itertools import repeat_last, take
 
 
+def to_list(elem_or_more):
+    return [elem_or_more] if not isinstance(elem_or_more, Sequence) or isinstance(elem_or_more, str) else list(elem_or_more)
+
+
 def repeat_last_up_to(elems, up_to=None):
     n_channels = [elems] if not isinstance(elems, Sequence) else up_to
     all_n_channels = repeat_last(n_channels)
