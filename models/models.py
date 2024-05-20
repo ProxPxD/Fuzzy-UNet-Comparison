@@ -20,14 +20,18 @@ class ModelFactory:
     @classmethod
     def build(cls,
             fuzzy_pooling: bool,
-            n_fuzzy_layers: int = 1,
+            outer_fuzzy_later: bool,
+            n_fuzzy_layers: int,
             **layers_kwargs
         ):
         kwargs = {}
+        if outer_fuzzy_later:
+            kwargs['outer_link'] = Link([FuzzyLayer(), Layer()])
         if n_fuzzy_layers:
             to_link = zip(repeatfunc(FuzzifyLayer), repeatfunc(DefuzzifyLayer))
             to_apply = zip(repeat(keras.Sequential), to_link)
-            kwargs['links'] = take(n_fuzzy_layers, starmap(apply, to_apply))
+            with_extra = zip(starmap(apply, to_apply), repeatfunc(Layer))
+            kwargs['links'] = take(n_fuzzy_layers, with_extra)
         if fuzzy_pooling:  # TODO: consider setting only in some places?
             kwargs['pooling'] = FuzzyPooling()
         return UNet(**kwargs)
@@ -35,18 +39,20 @@ class ModelFactory:
     @classmethod
     def get_name(cls,
             fuzzy_pooling: bool,
-            n_fuzzy_layers: int = 1,
+            outer_fuzzy_later: bool,
+            n_fuzzy_layers: int,
             **layers_kwargs
         ):
-        if not n_fuzzy_layers and not fuzzy_pooling:
-            return 'Crisp'
-        if n_fuzzy_layers and not fuzzy_pooling:
-            return 'Fuzzy Layer'
-        if not n_fuzzy_layers and fuzzy_pooling:
-            return 'Fuzzy Pooling'
-        if n_fuzzy_layers and fuzzy_pooling:
-            return 'Full Fuzzy'
-        return 'Unnamed'
+        match (n_fuzzy_layers, fuzzy_pooling, outer_fuzzy_later):
+            case (0, False, False): name = 'Crisp'
+            case (_, False, False): name = 'Inner Fuzzy Layer'
+            case (_, False, True): name = 'Outer Fuzzy Layer'
+            case (0, True, False): name = 'Fuzzy Pooling'
+            case (0, True, True): name = 'Outer Fuzzy Layer with Fuzzy Pooling'
+            case (_, True, False): name = 'Inner Fuzzy Layer with Fuzzy Pooling'
+            case (_, True, True): name = 'Full Fuzzy'
+            case _: name = 'Unnamed'
+        return name
 
     @classmethod
     def get_models_to_analyze(cls, space: dict) -> dict[str, UNet]:
@@ -56,10 +62,12 @@ class ModelFactory:
         }
 
 
+binary_space = [0, 1]
 bool_space = [True, False]
 
 space = {
-    'n_fuzzy_layers': [0, 1],
+    'n_fuzzy_layers': binary_space,
+    'outer_fuzzy_later': bool_space,
     'fuzzy_pooling': bool_space,
 }
 

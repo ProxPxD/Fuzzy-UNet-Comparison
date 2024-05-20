@@ -172,18 +172,23 @@ class UNet(IDepth, Layer):
             up_sampling: Layer = UpSampling2D(),
             activation: Layer = ReLU(),
             links: LayerOrMore = Layer(),
+            outer_link: Layer = None,
             **kwargs
         ):
         super().__init__(depth=depth, **kwargs)
         self.encode = Encoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, pooling=pooling,         **kwargs)
         self.decode = Decoder(depth=depth,         n_conv_layers=n_conv_layers, activation=activation, up_sampling=up_sampling, **kwargs)
         self.linkage = Linkage(depth=depth, links=links)
+        self.outer_link = outer_link
         self.bottle_neck = BottleNeck(depth=depth, n_conv_layers=n_conv_layers, activation=activation,                          **kwargs)
 
-    def __call__(self, input):
-        x, encoded = self.encode(input)
+    def __call__(self, x):
+        initial_x = x
+        x, encoded = self.encode(x)
         link_mapped = self.linkage(encoded)
         x = self.bottle_neck(x)
         x = self.decode(x, link_mapped)
+        if self.outer_link:
+            x = self.outer_link(initial_x)
         return x
 
