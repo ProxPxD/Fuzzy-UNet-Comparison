@@ -1,4 +1,4 @@
-from itertools import chain, product, repeat
+from itertools import product, repeat, starmap
 
 import keras
 from keras.layers import Layer
@@ -7,9 +7,6 @@ from toolz import apply
 
 from models.fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling, FuzzyLayer
 from models.general_components import UNet, Link
-from itertools import starmap
-
-from models.utils import fill_func_upto
 
 
 def gen_param_set(param_space):
@@ -45,8 +42,9 @@ class ModelFactory:
         ):
         match (n_fuzzy_layers, fuzzy_pooling, outer_fuzzy_later):
             case (0, False, False): name = 'Crisp'
+            case (0, False, True): name = 'Outer Fuzzy Layer'
             case (_, False, False): name = 'Inner Fuzzy Layer'
-            case (_, False, True): name = 'Outer Fuzzy Layer'
+            case (_, False, True): name = 'Inner and Outer Fuzzy Layer'
             case (0, True, False): name = 'Fuzzy Pooling'
             case (0, True, True): name = 'Outer Fuzzy Layer with Fuzzy Pooling'
             case (_, True, False): name = 'Inner Fuzzy Layer with Fuzzy Pooling'
