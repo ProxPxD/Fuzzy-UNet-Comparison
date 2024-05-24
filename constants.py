@@ -17,6 +17,11 @@ class Paths:
 
 
 @dataclass
+class DataInfo:
+    n_channels = 3
+
+
+@dataclass
 class DatasetPercentages:
     train: float = .8
     val: float = .1

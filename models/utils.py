@@ -9,7 +9,7 @@ def to_list(elem_or_more):
 
 
 def repeat_last_up_to(elems, up_to=None):
-    n_channels = [elems] if not isinstance(elems, Sequence) else up_to
+    n_channels = [elems] if not isinstance(elems, (Sequence, Iterable)) else elems
     all_n_channels = repeat_last(n_channels)
     return take(up_to, all_n_channels) if up_to is not None else all_n_channels
 

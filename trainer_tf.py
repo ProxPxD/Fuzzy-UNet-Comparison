@@ -46,16 +46,16 @@ class Trainer:
         self.epoch = None
         self.iteration = None
 
-        self.compile()
+        # self.compile()
 
     def set_model(self, model, name: str = None) -> None:
         self.model = model
         self.model_name = name or self.model_name
-        self.compile()
+        # self.compile()
 
-    def compile(self) -> None:
-        if self.model:
-            self.model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
+    # def compile(self) -> None:
+    #     if self.model:
+    #         self.model.compile(optimizer=self.optimizer, loss=self.loss, metrics=self.metrics)
 
     def _is_in_right_iteration(self) -> bool:
         return self.iteration % 1 == 0
@@ -83,10 +83,8 @@ class Trainer:
                 preds = self.model(X)
                 if self.metrics:
                     self._gather_metrics(results, preds)
-                print(f'preds shape: {preds.shape}')
-                print(f'preds shape[0]: {preds.shape[0]}')
-                print(f'results shape: {results.shape}')
-                print(f'results shape[0]: {results.shape[0]}')
+                print(f'{preds.shape = }')
+                print(f'{results.shape = }')
                 if self.batch_size and preds.shape[0] != self.batch_size:
                     self._verbosely_print(2, f'Batch sizes do not match! preds({preds.shape}), results({results.shape})')
                     continue

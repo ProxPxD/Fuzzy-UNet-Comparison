@@ -187,9 +187,9 @@ class FuzzyPooling(Layer):
             sigma = concatenate([partial_mean, sigma], axis=-1)
         return sigma + eps
 
-    def __call__(self, x):
+    def call(self, x):
         batch_size = x.shape[0]
-        self.output_size = self.row // self.pool
+        self.output_size = self.rows // self.pool
 
         # Since the method does not differentiate between two channels of a single image any more that it
         # differentiates between two channels of two separate images, it is beneficial to fold the first

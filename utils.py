@@ -4,6 +4,7 @@ import cv2
 from itertools import product
 from pathlib import Path
 from typing import Callable, Iterable
+from pydash import spread
 
 from constants import Params, L, Other
 
@@ -73,4 +74,4 @@ def normalize_picture(img: np.ndarray, resize: Callable = None):
 def get_normalize(labels):
     resize = None  # get_resize(Other.normalized_image_size[1:])
     label_dict = {tuple(row[L.COLOR]): idx for idx, row in labels.iterrows()}
-    return lambda X, mask: (normalize_picture(X, resize=resize), normalize_mask(mask, label_dict, resize=resize))
+    return spread(lambda X, mask: (normalize_picture(X, resize=resize), normalize_mask(mask, label_dict, resize=resize)))

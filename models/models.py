@@ -5,6 +5,7 @@ from keras.layers import Layer
 from more_itertools import repeatfunc, take
 from toolz import apply
 
+from constants import DataInfo
 from models.fuzzy import DefuzzifyLayer, FuzzifyLayer, FuzzyPooling, FuzzyLayer
 from models.general_components import UNet, Link
 
