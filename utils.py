@@ -54,13 +54,8 @@ def get_resize(shape):
     return resize
 
 
-def normalize_mask(mask, label_dict, resize: Callable = None):
-    resize = resize or (lambda img: img)
-    flat_mask = mask.reshape(-1, mask.shape[-1])
-    label_indices = np.array([label_dict[tuple(pixel)] for pixel in flat_mask], dtype=np.int32)
-    mask = label_indices.reshape(tuple(mask.shape[:-1]) + (1,))
+def normalize_mask(mask, resize: Callable = lambda img: img):
     mask = resize(mask)
-    # mask = mask.reshape(mask.shape[1:])  # TODO: potential bug source
     return mask
 
 
@@ -72,6 +67,4 @@ def normalize_picture(img: np.ndarray, resize: Callable = None):
 
 
 def get_normalize(labels):
-    resize = None  # get_resize(Other.normalized_image_size[1:])
-    label_dict = {tuple(row[L.COLOR]): idx for idx, row in labels.iterrows()}
-    return spread(lambda X, mask: (normalize_picture(X, resize=resize), normalize_mask(mask, label_dict, resize=resize)))
+    return spread(lambda X, mask: (normalize_picture(X), normalize_mask(mask)))
