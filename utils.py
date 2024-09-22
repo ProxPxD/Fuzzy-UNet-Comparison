@@ -68,3 +68,15 @@ def normalize_picture(img: np.ndarray, resize: Callable = None):
 
 def get_normalize(labels):
     return spread(lambda X, mask: (normalize_picture(X), normalize_mask(mask)))
+
+
+def print_shape(x, name, add=''):
+    print(f'{name} shape = {x.shape}' + add)
+
+
+def print_result_shape(f):
+    def wrapper(*args, **kwargs):
+        x = f(*args, **kwargs)
+        print(f'{f.__name__} {x.shape = }')
+        return x
+    return wrapper

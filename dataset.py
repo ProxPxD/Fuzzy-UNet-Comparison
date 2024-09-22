@@ -14,7 +14,6 @@ class CamSeqSequence(Sequence):
     def __init__(self, path_tuples, batch_size: int = 5, normalize=lambda args: args):
         self.path_tuples = path_tuples
         self.normalize = normalize
-        self.image_transposition = (2, 0, 1)
         self.index = 0
         self.batch_size = batch_size
 
@@ -25,7 +24,6 @@ class CamSeqSequence(Sequence):
         load = flow(str, cv2.imread)
         # load = compose_left(str, cv2.imread, self.normalize)
         img, mask = c(self.path_tuples[index]).map(load).apply(self.normalize).value()
-        img = img.transpose(self.image_transposition)
         return img, mask
 
     def _get_batch(self):

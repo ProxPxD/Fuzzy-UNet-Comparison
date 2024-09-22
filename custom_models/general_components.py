@@ -1,12 +1,16 @@
+import logging
 from itertools import repeat
-from typing import Optional, Sequence, Iterable, Reversible, Tuple, Union
+from itertools import repeat
+from typing import Optional, Sequence, Iterable, Tuple, Union
 
-from keras import Sequential
-from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, concatenate, ReLU
-from more_itertools import interleave, pairwise, last, padded
-
-from models.utils import repeat_last_up_to, to_list
 import keras.backend as K
+from keras import Sequential, Model
+from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, ReLU
+from keras.src.layers import Dense, Flatten
+from more_itertools import interleave, pairwise, last, padded, repeatfunc, flatten
+from toolz import compose_left as pipe
+
+from custom_models.utils import repeat_last_up_to, to_list
 
 IntPair = Tuple[int, int]
 LayerOrMore = Layer | Sequence[Layer]
@@ -23,12 +27,16 @@ class IDepth:
         super().__init__(*args, **kwargs)
 
     @property
-    def shapes(self) -> Union[Iterable[IntPair], Sequence[IntPair]]:  # 64, 128, ...
-        return list(pairwise(map(lambda d: 64*2**d, range(self.depth+1))))
+    def shape_pairs(self) -> Union[Iterable[IntPair], Sequence[IntPair]]:
+        return list(pairwise(self.shapes))
+
+    @property
+    def shapes(self) -> Union[Sequence[int], Iterable[int]]:  # 64, 128, ...
+        return list(map(lambda d: 64*2**d, range(self.depth+1)))
 
     @property
     def last_shape(self):
-        return last(self.shapes)[1]
+        return last(self.shape_pairs)[1]
 
 
 class MultiConv(IName, Layer):
@@ -93,7 +101,7 @@ class Link(Layer, IName, IDepth):
     def call(self, x):
         match len(self.layers):
             case 0: return x
-            case 1: return self.layers[0][x]
+            case 1: return self.layers[0](x)
             case _: return sum(layer(x)*w/w.sum() for layer, w in zip(self.layers, self.ws))
 
 
@@ -112,7 +120,7 @@ class Encoder(IDepth, IName, Layer):
                 pooling=pooling,
                 kernel=kernel,
                 **kwargs
-            ) for input_size, output_size in self.shapes
+            ) for input_size, output_size in self.shape_pairs
         ]
 
     def call(self, inputs):
@@ -136,7 +144,7 @@ class Decoder(IDepth, IName, Layer):
                 n_channels=(output_size, input_size),
                 up_sampling=up_sampling,
                 **kwargs
-            ) for input_size, output_size in reversed(self.shapes)
+            ) for input_size, output_size in reversed(self.shape_pairs)
         ]
 
     def call(self, x, from_links):
@@ -191,3 +199,65 @@ class UNet(IDepth, Layer):
             x = self.outer_link(initial_x)
         return x
 
+
+class CNN(Model):
+    def __init__(self,
+            input_shape: tuple,
+            n_classes: int,
+
+            all_n_channels: tuple[int, ...],
+            kernel_size=(3, 3),
+            pooling: Layer = None,
+            conv_activation='relu',
+
+            after_conv_layer: Layer = None,
+
+            flatten: Layer | bool = None,
+
+            dense_units=None,
+            dense_activation='relu',
+
+            output_layer=None,
+            output_activation='softmax',
+        ):
+        super().__init__()
+        pooling = pooling or MaxPooling2D
+        self.conv = self._create_conv_layers(input_shape, all_n_channels, conv_activation, kernel_size, pooling)
+        self.after_conv_layer = after_conv_layer or Layer()
+        self.flatten = Flatten() if flatten is True else flatten or Layer()
+        self.dense = self._create_dense_layers(dense_units, dense_activation)
+        self.output_layer = output_layer or Dense(n_classes, activation=output_activation)
+
+    def _create_conv_layers(self, input_shape, all_n_channels: tuple[int, ...], conv_activation: str, kernel_size: int, pooling: Layer) -> Layer:
+        conv_layers = [
+            Conv2D(all_n_channels[0], kernel_size, activation=conv_activation, input_shape=input_shape),
+            *[Conv2D(n_channels, kernel_size, activation=conv_activation)
+              for n_channels in all_n_channels[1:]]
+        ]
+        return Sequential(list(interleave(conv_layers, repeatfunc(pooling))))
+
+    def _create_dense_layers(self, dense_units, activation: str) -> Layer:
+        if not dense_units:
+            return Layer()
+        if isinstance(dense_units, int):
+            dense_units = (dense_units, )
+        if not isinstance(dense_units, Iterable):
+            raise ValueError('dense_units should be int or an iterable')
+        dense = Sequential([
+            Dense(units, activation=activation) for units in dense_units
+        ])
+        return dense
+
+    def call(self, x):
+        logging.info(f'{self.conv, self.flatten, self.dense, self.output_layer = }')
+        return pipe(
+            self.conv,
+            lambda x: print(f'AFTER conv: {x.shape}') or x,
+            self.after_conv_layer,
+            lambda x: print(f'AFTER after_conv_layer: {x.shape}') or x,
+            self.flatten,
+            lambda x: print(f'AFTER flatten: {x.shape}') or x,
+            self.dense,
+            lambda x: print(f'AFTER dense: {x.shape}') or x,
+            self.output_layer,
+        )(x)

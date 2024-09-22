@@ -5,7 +5,7 @@ from more_itertools import repeat_last, take, repeatfunc
 
 
 def to_list(elem_or_more):
-    return [elem_or_more] if not isinstance(elem_or_more, Sequence) or isinstance(elem_or_more, str) else list(elem_or_more)
+    return [elem_or_more] if not isinstance(elem_or_more, (list, tuple)) or isinstance(elem_or_more, str) else list(elem_or_more)
 
 
 def repeat_last_up_to(elems, up_to=None):

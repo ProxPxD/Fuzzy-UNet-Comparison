@@ -1,7 +1,7 @@
 # Modules
-models/fuzzy_layers
-models/fuzzy_pooling
-models/keras-unet-collection
+custom_models/fuzzy_layers
+custom_models/fuzzy_pooling
+custom_models/keras-unet-collection
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
