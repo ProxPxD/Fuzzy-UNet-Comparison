@@ -3,6 +3,9 @@ custom_models/fuzzy_layers
 custom_models/fuzzy_pooling
 custom_models/keras-unet-collection
 
+#logs
+logs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
