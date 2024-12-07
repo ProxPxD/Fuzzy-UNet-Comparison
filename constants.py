@@ -34,7 +34,7 @@ class Params:
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     loss = CategoricalCrossentropy()
 
-    batch_size = 10
+    batch_size = 5
     epochs = 100
     random_split_seed = 42
     log_dir = 'logs'
