@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from keras.utils import Sequence
 from more_itertools import random_permutation, split_into
-from pydash import chain as c, flow
+from pydash import chain as c, flow, InvalidMethod
 
 import utils
 from constants import Params, Paths
@@ -22,8 +22,9 @@ class CamSeqSequence(Sequence):
 
     def __getitem__(self, index):
         load = flow(str, cv2.imread)
-        # load = compose_left(str, cv2.imread, self.normalize)
-        img, mask = c(self.path_tuples[index]).map(load).apply(self.normalize).value()
+        img, mask = [load(path) for path in self.path_tuples[index]]
+        img, mask = self.normalize((img, mask))
+        #img, mask = c(self.path_tuples[index]).map(load).apply(self.normalize).value()
         return img, mask
 
     def _get_batch(self):

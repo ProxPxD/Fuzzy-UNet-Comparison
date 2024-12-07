@@ -27,7 +27,7 @@ class FuzzyOperations:
         return val
 
 
-class ConvFuzzyLayer(Layer):
+class FuzzyLayer(Layer):
     def __init__(self, *,
             output_dim: int = None,
             input_dim: int = None,
@@ -37,14 +37,25 @@ class ConvFuzzyLayer(Layer):
         """
         mu_j(x,a,c) = exp(-|| a . x ||^2)
         """
-        super().__init__()  # TODO: move to build
+        super().__init__()  # TODO: move to build?
         self.output_dim = output_dim
         self.input_dim = input_dim
         if init_centers and init_scales:
             self.A = self.create_transformation_matrix(init_centers, init_scales)
-        self.c_r = self.ta = None
+        self.ta = None
+        logging.debug(f'INIT: {self.input_dim=}, {self.output_dim=}')
+        if self.input_dim and self.output_dim:
+            self.c_r = self.create_semi_widths()
 
     def create_transformation_matrix(self, init_scales, init_centers):
+        """
+        :param init_scales: A scale (diagonal values s), representing the width or spread of the fuzzy number.
+        :param init_centers: A center (the inserted column c), representing the mean or central value of the fuzzy number.
+        :return: Each slice looks like:
+            [[s1, 0,  0,  c1],
+             [0,  s2, 0,  c2],
+             [0,  0,  s3, c3]]
+        """
         logging.debug(f'BUILT {init_centers.shape = }')
         logging.debug(f'BUILT {init_scales.shape = }')
         if init_centers.shape != init_scales.shape:
@@ -54,40 +65,70 @@ class ConvFuzzyLayer(Layer):
         a = tf.convert_to_tensor(np.array(diags), dtype=tf.float32)
         return tf.Variable(a)
 
-    def create_semi_widths(self, input_dim, output_dim):
-        semi_widths = K.zeros((output_dim, 1, input_dim+1))
-        column_tensor = K.one_hot(input_dim, input_dim+1)
-        ones_tensor = tf.convert_to_tensor(np.array([column_tensor]*output_dim), dtype=tf.float32)
-        ones_tensor = K.reshape(ones_tensor, (output_dim, 1, input_dim+1))
-        semi_widths = semi_widths + ones_tensor
+    def create_semi_widths(self):
+        """
+        Creates the initial semi-widths matrix for fuzzy logic membership functions.
+
+        This function generates a tensor that represents the initial spread (semi-width) of fuzzy sets
+        based on input dimensions and a predefined output dimension. It creates a one-hot encoded tensor
+        where the last feature (center) has a value of 1, and all others have 0. This tensor is used
+        to initialize the semi-width values across the different output fuzzy sets.
+
+        :return:
+        [[0, 0, 1],
+         [0, 0, 1],
+         [0, 0, 1]]
+
+        """
+        logging.debug('')
+        column_tensor = tf.one_hot(self.input_dim, self.input_dim+1)
+        logging.debug(f'ConvFuzzyLayer: create_semi_widths: {column_tensor.shape = }')
+        ones_tensor = tf.convert_to_tensor(np.array([column_tensor]*self.output_dim), dtype=tf.float32)
+        logging.debug(f'ConvFuzzyLayer: create_semi_widths: {ones_tensor.shape = }')
+        semi_widths = tf.reshape(ones_tensor, (self.output_dim, 1, self.input_dim+1))
+        logging.debug(f'ConvFuzzyLayer: create_semi_widths: {semi_widths.shape = }')
+        logging.debug('')
         return tf.Variable(semi_widths)
 
     def build(self, input_shape):
         logging.debug('BUILDING!')
         if input_changed := not self.input_dim:
             self.input_dim = input_shape[-1]
+        logging.debug(f'BUILT {self.input_dim = }')
         if output_changed := not self.output_dim:
             self.output_dim = self.input_dim
+        logging.debug(f'BUILT {self.output_dim = }')
+        logging.debug(f'BUILT {input_changed = }, {output_changed = }')
+
         if not hasattr(self, 'A'):
             init_centers = tf.random.normal((self.output_dim, self.input_dim))
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
-        if input_changed or output_changed:  # Equivalent to hasattr(self, 'c_r')
-            self.c_r = self.create_semi_widths(self.input_dim, self.output_dim)
-        self.ta = tf.concat([self.A, self.c_r], axis=1)
-
-        logging.debug(f'BUILT {self.input_dim = }')
-        logging.debug(f'BUILT {self.output_dim = }')
         logging.debug(f'BUILT {self.A.shape = }')
+        if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
+            self.c_r = self.create_semi_widths()
         logging.debug(f'BUILT {self.c_r.shape = }')
+
+        self.ta = self.concatenate_a_and_cr()
         logging.debug(f'BUILT {self.ta.shape = }')
+
         logging.debug('')
+
+    def concatenate_a_and_cr(self):
+        """
+        :return: Each slice looks like:
+            [[s1, 0,  0,  c1],
+             [0,  s2, 0,  c2],
+             [0,  0,  s3, c3]
+             [0,  0,  0,  1]]
+        """
+        return tf.concat([self.A, self.c_r], axis=1)
 
     def call(self, X):
         logging.debug(f'{X.shape = }')
         X_with_ones = self.insert_ones(X)
         logging.debug(f'{X_with_ones.shape = }')
-        tx = tf.transpose(X_with_ones, perm=[1, 2, 3, 0] or [3, 1, 2, 0])
+        tx = tf.transpose(X_with_ones, perm=[1, 0])
         logging.debug(f'{tx.shape = }')
         mul = self.ta @ tx
         logging.debug(f'{mul.shape = }')
@@ -97,6 +138,7 @@ class ConvFuzzyLayer(Layer):
         logging.debug(f'{memberships.shape = }')
         transposed = tf.transpose(tf.expand_dims(memberships, axis=0))
         logging.debug(f'{transposed.shape = }')
+        # raise NotImplementedError
         return transposed
 
     def insert_ones(self, X):
@@ -418,7 +460,8 @@ class FuzzyPooling(Layer):
         pooled = self.reduce_mean(pooled)
         logging.debug(f'reduced {pooled.shape = }')
 
-        count = int(tf.reduce_sum(tf.cast(m_unimportant, tf.float32)))  #.numpy()  # Count
+        # count = int(tf.reduce_sum(tf.cast(m_unimportant, tf.float32)))  #.numpy()  # Count
+        count = tf.reduce_sum(tf.cast(m_unimportant, tf.float32))#.numpy()  # Count
         count = count.numpy() if tf.executing_eagerly() else 0  # tf.reduce_any(count != 0)
         logging.debug(f'{count = }')
 

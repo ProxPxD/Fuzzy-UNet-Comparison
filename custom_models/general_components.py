@@ -5,7 +5,7 @@ from typing import Optional, Sequence, Iterable, Tuple, Union
 
 import keras.backend as K
 from keras import Sequential, Model
-from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, ReLU
+from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, ReLU, Lambda
 from keras.src.layers import Dense, Flatten
 from more_itertools import interleave, pairwise, last, padded, repeatfunc, flatten
 from toolz import compose_left as pipe
@@ -154,7 +154,7 @@ class Decoder(IDepth, IName, Layer):
 
 
 class Linkage(IName, IDepth, Layer):
-    def __init__(self, links: LayerOrMore = Layer(), depth=4):
+    def __init__(self, links: LayerOrMore = Lambda(lambda x: x), depth=4):
         super().__init__(depth=depth)
         self.links = [Link(layers=link) for link in padded(to_list(links), n=depth)]
 
@@ -178,7 +178,7 @@ class UNet(IDepth, Layer):
             pooling: Layer = MaxPooling2D(),
             up_sampling: Layer = UpSampling2D(),
             activation: Layer = ReLU(),
-            links: LayerOrMore = Layer(),
+            links: LayerOrMore = Lambda(lambda x: x),
             outer_link: Layer = None,
             **kwargs
         ):
@@ -223,8 +223,8 @@ class CNN(Model):
         super().__init__()
         pooling = pooling or MaxPooling2D
         self.conv = self._create_conv_layers(input_shape, all_n_channels, conv_activation, kernel_size, pooling)
-        self.after_conv_layer = after_conv_layer or Layer()
-        self.flatten = Flatten() if flatten is True else flatten or Layer()
+        self.after_conv_layer = after_conv_layer or Lambda(lambda x: x)
+        self.flatten = Flatten() if flatten is True else flatten or Lambda(lambda x: x)
         self.dense = self._create_dense_layers(dense_units, dense_activation)
         self.output_layer = output_layer or Dense(n_classes, activation=output_activation)
 
@@ -238,7 +238,7 @@ class CNN(Model):
 
     def _create_dense_layers(self, dense_units, activation: str) -> Layer:
         if not dense_units:
-            return Layer()
+            return Lambda(lambda x: x)
         if isinstance(dense_units, int):
             dense_units = (dense_units, )
         if not isinstance(dense_units, Iterable):
@@ -249,15 +249,16 @@ class CNN(Model):
         return dense
 
     def call(self, x):
-        logging.info(f'{self.conv, self.flatten, self.dense, self.output_layer = }')
+        for name in ['conv', 'after_conv_layer', 'flatten', 'dense', 'output_layer']:
+            logging.info(f'CNN: {name} = {getattr(self, name)}')
         return pipe(
             self.conv,
-            lambda x: print(f'AFTER conv: {x.shape}') or x,
+            lambda x: logging.debug(f'CNN AFTER conv: {x.shape}') or x,
             self.after_conv_layer,
-            lambda x: print(f'AFTER after_conv_layer: {x.shape}') or x,
+            lambda x: logging.debug(f'CNN AFTER after_conv_layer: {x.shape}') or x,
             self.flatten,
-            lambda x: print(f'AFTER flatten: {x.shape}') or x,
+            lambda x: logging.debug(f'CNN AFTER flatten: {x.shape}') or x,
             self.dense,
-            lambda x: print(f'AFTER dense: {x.shape}') or x,
+            lambda x: logging.debug(f'CNN AFTER dense: {x.shape}') or x,
             self.output_layer,
         )(x)

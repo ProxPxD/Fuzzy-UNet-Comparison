@@ -1,11 +1,9 @@
 from itertools import product
 
 from keras import Model
-from keras.src.layers import MaxPooling2D
 
-from custom_models.fuzzy import FuzzyPooling, ConvFuzzyLayer
+from custom_models.fuzzy import FuzzyPooling, FuzzyLayer
 from custom_models.general_components import UNet, CNN
-from more_itertools import repeatfunc
 
 model_space = ('unet', 'cnn')
 bool_space = (True, False)
@@ -72,13 +70,13 @@ class ModelFactory:
             case (bool(), bool()): pass
             case _: raise ValueError(f'{fuzzy_layer, fuzzy_pooling = } are not supported!')
 
-        after_conv_layer = ConvFuzzyLayer() if fuzzy_layer else None
+        fuzzy_layer_object = FuzzyLayer() if fuzzy_layer else None
         dense_units = (None if fuzzy_layer else 64) and 64 or 64
         pooling = FuzzyPooling if fuzzy_pooling else None
         cnn = CNN(
             pooling=pooling,
             dense_units=dense_units,
-            after_conv_layer=after_conv_layer,
+            output_layer=fuzzy_layer_object,
             flatten=True,
             **layers_kwargs
         )
@@ -88,6 +86,6 @@ class ModelFactory:
 space = {
     'model': model_space and ('cnn', ),
     'fuzzy_layer': bool_space,
-    'fuzzy_pooling': bool_space or [False],
+    'fuzzy_pooling': bool_space and [False],
     'depth': [3],
 }

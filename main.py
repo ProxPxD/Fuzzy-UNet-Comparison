@@ -1,3 +1,5 @@
+import logging
+
 from torch.utils.tensorboard import FileWriter
 
 import analysis
@@ -32,7 +34,8 @@ trainer = Trainer(
     loss=Params.loss,
     validate_every_n_epoch=1,
     epochs=Params.epochs,
-    batch_size=8,
+    batch_size=Params.batch_size,
+    logger=logging.debug,
 )
 
 for name, model in to_analyzes.items():

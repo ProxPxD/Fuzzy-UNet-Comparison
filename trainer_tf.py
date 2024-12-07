@@ -106,6 +106,7 @@ class Trainer:
 
     def _backwards(self, results, preds):
         self._verbosely_print(3, f'Calculating loss')
+        self.logger(f'self.loss({results=}, {preds=})')
         loss_result = self.loss(results, preds)
         full_label = f'Loss - train'
         self._count(full_label, loss_result.numpy())
