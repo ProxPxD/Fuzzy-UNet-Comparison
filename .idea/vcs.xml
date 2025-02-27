@@ -3,10 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/custom_models/fuzzy_layers" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/custom_models/fuzzy_layers_torch" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/custom_models/fuzzy_pooling" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/custom_models/keras-unet-collection" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/custom_models/keras-unet-collection/models/fuzzy_pooling" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/custom_models/submodules/fuzzy_layers" vcs="Git" />
   </component>
 </project>
