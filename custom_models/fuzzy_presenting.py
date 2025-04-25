@@ -357,9 +357,25 @@ class FuzzyPooling(Layer):
 
     def membership(self, x: tf.Tensor) -> tf.Tensor:
         """
-        Computes Kernel Mean Matrix
-        :param x: 
-        :return:
+        Constructs multi-scale mean matrix for fuzzy membership calculation.
+
+        Why:
+        - Captures local context at different scales to handle uncertainty
+        - Creates basis for type-2 fuzzy sets through varying neighborhood sizes
+
+        Process:
+        1. Start with global mean of entire patch
+        2. Iteratively add means from expanding symmetric neighborhoods
+        3. Concatenate results to form hierarchical mean matrix
+
+        Example:
+        For 3x3 kernel (n_tiles=9, h=5):
+        - First iteration: full patch mean
+        - Subsequent iterations: means of 7, 5, 3, 1 element neighborhoods
+
+        Returns:
+            tf.Tensor: Shape (..., h) where h is the number of fuzzy sets
+            Each channel contains mean values from different neighborhood sizes
         """
         h = self.h
         # Kernel Mean Matrix
@@ -382,6 +398,26 @@ class FuzzyPooling(Layer):
         return variance + (eps or self.eps)
 
     def calculate_gaussian_membership(self, x: tf.Tensor, kmm: tf.Tensor, var: tf.Tensor) -> tf.Tensor:
+        """
+        Computes membership degrees using Gaussian fuzzy membership function.
+
+        Mathematical Formulation:
+            μ_ij = exp(-0.5 * (x_ij - μ_k)^2 / σ_k^2)
+
+        Where:
+        - μ_k: Mean from k-th fuzzy set
+        - σ_k^2: Variance estimate for k-th set
+        - x_ij: Original patch values
+
+        Design Choices:
+        - Gaussian function provides smooth membership transition
+        - Variance in denominator adapts to local contrast
+        - Tiling operations enable parallel computation
+
+        Returns:
+            tf.Tensor: Membership degrees shaped (..., h, n_tiles)
+            Represents membership of each element to each fuzzy set
+        """
         xrep = self.tile(x, self.h)
         kmmrep = self.tile(kmm, self.n_tiles)
         varrep = self.tile(var, self.n_tiles)
@@ -389,6 +425,23 @@ class FuzzyPooling(Layer):
         return pi
 
     def calculate_threshold(self, pi: tf.Tensor) -> tf.Tensor:
+        """
+        Computes adaptive threshold using modified min-max principle.
+
+        Strategy:
+        1. Find maximum membership across fuzzy sets for each position
+        2. Take minimum of these maxima as threshold
+        3. Ensures threshold adapts to local membership distribution
+
+        Why Effective:
+        - Automatically adjusts to varying input characteristics
+        - Prevents hard-coded thresholds that might not generalize
+        - Conservative threshold guarantees important features are kept
+
+        Returns:
+            tf.Tensor: Threshold values shaped (..., 1)
+            Used to distinguish important vs unimportant regions
+        """
         max_values = tf.reduce_max(pi, axis=3)
         thresh = tf.reduce_min(max_values, axis=3, keepdims=True)
         return thresh
