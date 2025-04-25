@@ -47,8 +47,8 @@ class FuzzyLayer(Layer):
 
     def create_transformation_matrix(self, init_scales, init_centers):
         """
-        :param init_scales: A scale (diagonal values s), representing the width or spread of the fuzzy number.
-        :param init_centers: A center (the inserted column c), representing the mean or central value of the fuzzy number.
+        :param init_scales: A scale (diagonal values s), representing the width or the spread of a fuzzy number.
+        :param init_centers: A center (an inserted column c), representing the mean or central value of the fuzzy number.
         :return: Each slice looks like:
             [[s1, 0,  0,  c1],
              [0,  s2, 0,  c2],
@@ -69,7 +69,6 @@ class FuzzyLayer(Layer):
         based on input dimensions and a predefined output dimension. It creates a one-hot encoded tensor
         where the last feature (center) has a value of 1, and all others have 0. This tensor is used
         to initialize the semi-width values across the different output fuzzy sets.
-
         :return:
         [[0, 0, 1],
          [0, 0, 1],
@@ -87,7 +86,7 @@ class FuzzyLayer(Layer):
         if output_changed := not self.output_dim:
             self.output_dim = self.input_dim
 
-        if not hasattr(self, 'A'):
+        if not hasattr(self, 'A'):  # Initialize transformation matrix randomly
             init_centers = tf.random.normal((self.output_dim, self.input_dim))
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
@@ -108,15 +107,32 @@ class FuzzyLayer(Layer):
         return tf.concat([self.A, self.c_r], axis=1)
 
     def call(self, X):
-        X_with_ones = self.insert_ones(X)
-        tx = tf.transpose(X_with_ones, perm=[1, 0])
-        mul = self.ta @ tx
-        exponents = tf.norm(mul[:, :self.input_dim], axis=1)
-        memberships = tf.exp(-exponents)
-        transposed = tf.transpose(tf.expand_dims(memberships, axis=0))
+        """
+        # step 1. Insert ones to the input for bias terms in the fuzzy rules
+        # step 2. Transpose the matrix to prepare for the matrix multiplication
+        # step 3. Matrix multiplication designates the deviation from a prototype fuzzy rule
+        # step 4. Euclidean distance normalization
+        # step 5. Convert the normalized distance into the memberships
+        # step 6. Adjust the matrix orientation
+        :param X:
+        :return:
+        """
+        X_with_ones = self.insert_ones(X)  # step 1
+        tx = tf.transpose(X_with_ones, perm=[1, 0])  # step 2
+        mul = self.ta @ tx  # step 3
+        exponents = tf.norm(mul[:, :self.input_dim], axis=1) # step 4
+        memberships = tf.exp(-exponents) # step 5
+        transposed = tf.transpose(tf.expand_dims(memberships, axis=0))  # step 6
         return transposed
 
     def insert_ones(self, X):
+        """
+        :return: Each slice looks like:
+            [[v1],
+             ...,
+             [vn]
+             [1]]
+        """
         repeated_one = tf.expand_dims(tf.ones(X.shape[:-1]), axis=-1)  # Shape with batch without channels
         ext_x = tf.concat([X, repeated_one], axis=-1)
         return ext_x
@@ -211,73 +227,115 @@ class FuzzyPooling(Layer):
         if if_n is None or shape[if_n]:
             setattr(self, name, val := shape[s])
 
-    def calculate_fuzzy_variance(self, x, v_avg, eps=1e-4):
-        h = self.h
-        omega = abs(x - v_avg)
-        sigma = self.reduce_mean(omega)
-
-        for k in range(h-1):
-            start = h-k-1
-            end = h+k+1 if self.n_tiles % 2 == 0 else h + k
-            partial_mean = self.reduce_mean(omega, start, end)
-            sigma = tf.concat([partial_mean, sigma], axis=-1)
-        return sigma + eps
-
     def call(self, x):
+        """
+        Executes Type-2 Fuzzy pooling operation through sequential processing stages.
+
+        Process Flow:
+        1. Input Preparation
+        2. Patch Extraction
+        3. Fuzzy Analysis
+        4. Adaptive Pooling
+        5. Output Reconstruction
+
+        Detailed Operation:
+        - Transforms input feature map into overlapping local regions (patches)
+        - Analyzes each patch using fuzzy membership and variance measures
+        - Applies different pooling strategies based on local region characteristics
+        - Combines results while preserving spatial relationships
+
+        Args:
+            x: Input tensor of shape (batch, height, width, channels)
+                Represents the feature map from previous convolutional layers
+
+        Returns:
+            tf.Tensor: Pooled output of shape (batch, out_height, out_width, channels)
+                Downsampled feature map where each value is determined by fuzzy rules
+                balancing local characteristics and global consistency
+        """
+        #!
         batch_size = self.batch_size or x.shape[0] or 1
         has_channels = len(x.shape) - int(bool(x.shape[0])) > 2
         self._set_dims_from_shape(x.shape)
 
         channels = self.channels or (x.shape[-1] if has_channels else 1)
+        #!
 
         # Since the method does not differentiate between two channels of a single image any more that is
         # it differentiates between two channels of two separate images, it is beneficial to fold the first
         # two dimensions, i.e., batch_size and channels together.
 
+        # [Stage 2: Patch Extraction]
+        # Pad input to make it divisible by kernel size
         x = self.pad(x)
-        self._set_dims_from_shape(x.shape)
+        self._set_dims_from_shape(x.shape)  #!
+
+        # Extract overlapping local regions (patches)
+        # Shape transforms: (B,H,W,C) -> (B*C, out_h, out_w, n_tiles)
+        # This flattening allows per-channel independent processing
         x = self.extract_patches(x)
         x = tf.reshape(x, [-1, *self.output_size, self.n_tiles])
 
-        kmm = self.membership(x)
-        v_avg = self.reduce_mean(kmm)
-        var = self.calculate_variance(x, v_avg)
+        # [Stage 3: Fuzzy Analysis]
+        # Kernel Mean Matrix - local averages at different scales
+        kmm = self.membership(x)  # Shape: (B*C, out_h, out_w, h)
+        # Global average across all positions
+        v_avg = self.reduce_mean(kmm)  # Reference point for variance
+        # Variance estimation considering multiple neighborhood sizes
+        var = self.calculate_variance(x, v_avg)  # Shape matches kmm
 
+        # Gaussian membership degrees (μ) using exponential decay
+        # pi represents how well each element belongs to its neighborhood
         pi = self.calculate_gaussian_membership(x, kmm, var)
-        avg_pi = self.calculate_avg_pi(pi)
-        thresh = self.calculate_threshold(pi)
+        # Average membership across fuzzy sets
+        avg_pi = self.calculate_avg_pi(pi)  # Reduces h dimension
+        # Adaptive threshold based on minimum of maximum memberships
+        thresh = self.calculate_threshold(pi)  # Per-position threshold
 
-        m_membership_importance = tf.reduce_any(avg_pi > thresh, axis=-1, keepdims=True)  # avg_pi[..., self.h-1] # new axis # mask_primary
+        # [Stage 4: Adaptive Pooling]
+        # Create decision masks using fuzzy logic rules:
+        # (1) Regions with strong membership characteristics
+        m_membership_importance = tf.reduce_any(avg_pi > thresh, axis=-1, keepdims=True)
+        # (2) Regions with low variance (homogeneous areas)
         m_variance_importance = (var[..., self.h-1] < self.eps)[..., tf.newaxis]  # new axis  # s_condition
 
+        # (3) Complementary regions requiring special handling
         m_only_variance_importance = ~m_membership_importance & m_variance_importance
         m_unimportant = ~(m_membership_importance | m_only_variance_importance)
 
+        # Initialize pooling output tensor
         # joining channels and batch_size for simplicity
         pooled = tf.zeros([batch_size * channels * (self.n_tiles and 1), *self.output_size, 1])
 
-        # pooled operations
+        # Apply hierarchical pooling strategies:
+        # Priority 1: Membership-important regions → Simple mean pooling
         pooled = tf.where(m_membership_importance, self.reduce_mean(x), pooled)  # self.reduce_mean(x)
+        # Priority 2: Low-variance regions → Use global average
         pooled = tf.where(m_only_variance_importance, v_avg, pooled)
         pooled = self.reduce_mean(pooled)
 
-        count = tf.reduce_sum(tf.cast(m_unimportant, tf.float32))#.numpy()  # Count
-        count = count.numpy() if tf.executing_eagerly() else 0  # tf.reduce_any(count != 0)
+        # Priority 3: Uncertain regions → Weighted average using membership degrees
+        count = tf.reduce_sum(tf.cast(m_unimportant, tf.float32))
 
-        if count:
-            tiled_m_unimportant = self.tile(m_unimportant, shape=(count, *self.output_size, self.n_tiles))
+        # Extract uncertain regions and their membership weights
+        tiled_m_unimportant = self.tile(m_unimportant, shape=(count, *self.output_size, self.n_tiles))
 
-            region = tf.boolean_mask(x, tiled_m_unimportant)  # Region
-            g = tf.boolean_mask(avg_pi, tiled_m_unimportant)  # g
+        region = tf.boolean_mask(x, tiled_m_unimportant)  # Region
+        g = tf.boolean_mask(avg_pi, tiled_m_unimportant)  # g
 
-            denoised = tf.reduce_sum(g*region, axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
-            denoised = tf.reshape(denoised, [count])  # Denoised
+        # Compute denoised values: Σ(g*region)/Σg
+        denoised = tf.reduce_sum(g*region, axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
+        denoised = tf.reshape(denoised, [count])  # Denoised
 
-            indices = tf.where(m_unimportant)
-            pooled = tf.tensor_scatter_nd_update(pooled, indices, denoised)
+        # Update pooled output with denoised values
+        indices = tf.where(m_unimportant)
+        pooled = tf.tensor_scatter_nd_update(pooled, indices, denoised)
 
+        # [Stage 5: Output Reconstruction]
+        # Restore original batch and channel dimensions
         pooled = tf.reshape(pooled, [batch_size, *self.output_size, channels])
         pooled = tf.identity(pooled)
+
         return pooled
 
     def pad(self, x):
@@ -298,6 +356,11 @@ class FuzzyPooling(Layer):
         )
 
     def membership(self, x: tf.Tensor) -> tf.Tensor:
+        """
+        Computes Kernel Mean Matrix
+        :param x: 
+        :return:
+        """
         h = self.h
         # Kernel Mean Matrix
         kmm = self.reduce_mean(x)
