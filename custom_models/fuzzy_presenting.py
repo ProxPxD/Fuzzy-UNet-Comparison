@@ -43,7 +43,7 @@ class FuzzyLayer(Layer):
             self.A = self.create_transformation_matrix(init_centers, init_scales)
         self.ta = None
         if self.input_dim and self.output_dim:
-            self.c_r = self.create_semi_widths()
+            self.b_r = self.create_bias_component()
 
     def create_transformation_matrix(self, init_scales, init_centers):
         """
@@ -61,24 +61,25 @@ class FuzzyLayer(Layer):
         a = tf.convert_to_tensor(np.array(diags), dtype=tf.float32)
         return tf.Variable(a)
 
-    def create_semi_widths(self):
-        """
-        Creates the initial semi-widths matrix for fuzzy logic membership functions.
+    def create_bias_component(self):
+        """Constructs the bias component for a fuzzy affine transformation matrix.
 
-        This function generates a tensor that represents the initial spread (semi-width) of fuzzy sets
-        based on input dimensions and a predefined output dimension. It creates a one-hot encoded tensor
-        where the last feature (center) has a value of 1, and all others have 0. This tensor is used
-        to initialize the semi-width values across the different output fuzzy sets.
-        :return:
-        [[0, 0, 1],
-         [0, 0, 1],
-         [0, 0, 1]]
+        The bias component is a constant tensor appended to the scaling matrix `self.A`
+        to form a combined transformation matrix `self.ta`. This matrix is used to compute
+        fuzzy memberships by scaling and shifting input data in homogeneous coordinates.
 
+        Returns:
+            tf.Variable: A tensor of shape `(output_dim, 1, input_dim + 1)`, where:
+                - The last column is `[0, 0, ..., 1]` (homogeneous coordinate).
+                - The remaining columns are zero (initialized bias terms).
+                Example for `input_dim=2`, `output_dim=2`:
+                    [[[0, 0, 1]],
+                     [[0, 0, 1]]]
         """
         column_tensor = tf.one_hot(self.input_dim, self.input_dim+1)
         ones_tensor = tf.convert_to_tensor(np.array([column_tensor]*self.output_dim), dtype=tf.float32)
-        semi_widths = tf.reshape(ones_tensor, (self.output_dim, 1, self.input_dim+1))
-        return tf.Variable(semi_widths)
+        bias_component = tf.reshape(ones_tensor, (self.output_dim, 1, self.input_dim+1))
+        return tf.Variable(bias_component)
 
     def build(self, input_shape):
         if input_changed := not self.input_dim:
@@ -91,7 +92,7 @@ class FuzzyLayer(Layer):
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
         if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
-            self.c_r = self.create_semi_widths()
+            self.b_r = self.create_bias_component()
 
         self.ta = self.concatenate_a_and_cr()
 
@@ -104,7 +105,7 @@ class FuzzyLayer(Layer):
              [0,  0,  s3, c3]
              [0,  0,  0,  1]]
         """
-        return tf.concat([self.A, self.c_r], axis=1)
+        return tf.concat([self.A, self.b_r], axis=1)
 
     def call(self, X):
         """
@@ -120,8 +121,8 @@ class FuzzyLayer(Layer):
         X_with_ones = self.insert_ones(X)  # step 1
         tx = tf.transpose(X_with_ones, perm=[1, 0])  # step 2
         mul = self.ta @ tx  # step 3
-        exponents = tf.norm(mul[:, :self.input_dim], axis=1) # step 4
-        memberships = tf.exp(-exponents) # step 5
+        exponents = tf.norm(mul[:, :self.input_dim], axis=1)  # step 4
+        memberships = tf.exp(-exponents)  # step 5
         transposed = tf.transpose(tf.expand_dims(memberships, axis=0))  # step 6
         return transposed
 
@@ -278,7 +279,7 @@ class FuzzyPooling(Layer):
 
         # [Stage 3: Fuzzy Analysis]
         # Kernel Mean Matrix - local averages at different scales
-        kmm = self.membership(x)  # Shape: (B*C, out_h, out_w, h)
+        kmm = self.calculate_kernel_mean_matrix(x)  # Shape: (B*C, out_h, out_w, h)
         # Global average across all positions
         v_avg = self.reduce_mean(kmm)  # Reference point for variance
         # Variance estimation considering multiple neighborhood sizes
@@ -341,13 +342,7 @@ class FuzzyPooling(Layer):
     def pad(self, x):
         return tf.pad(x, [[0, 0], [0, self.rows_padding], [0, self.cols_padding], [0, 0]])
 
-    def extract_patches(self,
-            x,
-            *,
-            padding: str = None):
-        # Shape: (#todo)
-        # ..., channels * tiles
-        # last dimension is arranged channel by channel
+    def extract_patches(self, x, *, padding: str = None):
         return tf.image.extract_patches(x,
             sizes=[1, *self.kernel, 1],
             strides=[1, *self.stride, 1],
@@ -355,9 +350,9 @@ class FuzzyPooling(Layer):
             padding=padding or 'SAME'
         )
 
-    def membership(self, x: tf.Tensor) -> tf.Tensor:
+    def calculate_kernel_mean_matrix(self, x: tf.Tensor) -> tf.Tensor:
         """
-        Constructs multi-scale mean matrix for fuzzy membership calculation.
+        Constructs multi-scale mean matrix (denoted as Kernel Mean Matrix) for fuzzy membership calculation.
 
         Why:
         - Captures local context at different scales to handle uncertainty
@@ -394,7 +389,7 @@ class FuzzyPooling(Layer):
 
     def calculate_variance(self, x: tf.Tensor, avg: tf.Tensor, eps=None) -> tf.Tensor:
         omega = abs(x - avg)
-        variance = self.membership(omega)
+        variance = self.calculate_kernel_mean_matrix(omega)
         return variance + (eps or self.eps)
 
     def calculate_gaussian_membership(self, x: tf.Tensor, kmm: tf.Tensor, var: tf.Tensor) -> tf.Tensor:
