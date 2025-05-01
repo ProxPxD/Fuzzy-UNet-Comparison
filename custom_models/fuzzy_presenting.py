@@ -302,7 +302,7 @@ class FuzzyPooling(Layer):
 
         # (3) Complementary regions requiring special handling
         m_only_variance_importance = ~m_membership_importance & m_variance_importance
-        m_unimportant = ~(m_membership_importance | m_only_variance_importance)
+        m_unimportant = ~(m_membership_importance | m_variance_importance)
 
         # Initialize pooling output tensor
         # joining channels and batch_size for simplicity
