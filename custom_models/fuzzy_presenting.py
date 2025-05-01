@@ -296,40 +296,40 @@ class FuzzyPooling(Layer):
         # [Stage 4: Adaptive Pooling]
         # Create decision masks using fuzzy logic rules:
         # (1) Regions with strong membership characteristics
-        m_membership_importance = tf.reduce_any(avg_pi > thresh, axis=-1, keepdims=True)
+        m_membership_certain = tf.reduce_any(avg_pi > thresh, axis=-1, keepdims=True)
         # (2) Regions with low variance (homogeneous areas)
-        m_variance_importance = (var[..., self.h-1] < self.eps)[..., tf.newaxis]  # new axis  # s_condition
+        m_variance_certain = (var[..., self.h-1] < self.eps)[..., tf.newaxis]  # new axis  # s_condition
 
         # (3) Complementary regions requiring special handling
-        m_only_variance_importance = m_variance_importance & ~m_membership_importance
-        m_unimportant = ~m_variance_importance & ~m_membership_importance
+        m_only_variance_certain = m_variance_certain & ~m_membership_certain
+        m_uncertain = ~m_variance_certain & ~m_membership_certain
 
         # Initialize pooling output tensor
         # joining channels and batch_size for simplicity
         pooled = tf.zeros([batch_size * channels * (self.n_tiles and 1), *self.output_size, 1])
 
         # Apply hierarchical pooling strategies:
-        # Priority 1: Membership-important regions → Simple mean pooling
-        pooled = tf.where(m_membership_importance, self.reduce_mean(x), pooled)  # self.reduce_mean(x)
+        # Priority 1: Membership-certain regions → Simple mean pooling
+        pooled = tf.where(m_membership_certain, self.reduce_mean(x), pooled)  # self.reduce_mean(x)
         # Priority 2: Low-variance regions → Use global average
-        pooled = tf.where(m_only_variance_importance, v_avg, pooled)
+        pooled = tf.where(m_only_variance_certain, v_avg, pooled)
         pooled = self.reduce_mean(pooled)
 
         # Priority 3: Uncertain regions → Weighted average using membership degrees
-        count = tf.reduce_sum(tf.cast(m_unimportant, tf.float32))
+        count = tf.reduce_sum(tf.cast(m_uncertain, tf.float32))
 
         # Extract uncertain regions and their membership weights
-        tiled_m_unimportant = self.tile(m_unimportant, shape=(count, *self.output_size, self.n_tiles))
+        tiled_m_uncertain = self.tile(m_uncertain, shape=(count, *self.output_size, self.n_tiles))
 
-        region = tf.boolean_mask(x, tiled_m_unimportant)  # Region
-        g = tf.boolean_mask(avg_pi, tiled_m_unimportant)  # g
+        region = tf.boolean_mask(x, tiled_m_uncertain)  # Region
+        g = tf.boolean_mask(avg_pi, tiled_m_uncertain)  # g
 
         # Compute denoised values: Σ(g*region)/Σg
         denoised = tf.reduce_sum(g*region, axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
         denoised = tf.reshape(denoised, [count])  # Denoised
 
         # Update pooled output with denoised values
-        indices = tf.where(m_unimportant)
+        indices = tf.where(m_uncertain)
         pooled = tf.tensor_scatter_nd_update(pooled, indices, denoised)
 
         # [Stage 5: Output Reconstruction]
@@ -431,11 +431,11 @@ class FuzzyPooling(Layer):
         Why Effective:
         - Automatically adjusts to varying input characteristics
         - Prevents hard-coded thresholds that might not generalize
-        - Conservative threshold guarantees important features are kept
+        - Conservative threshold guarantees certain features are kept
 
         Returns:
             tf.Tensor: Threshold values shaped (..., 1)
-            Used to distinguish important vs unimportant regions
+            Used to distinguish certain vs uncertain regions
         """
         max_values = tf.reduce_max(pi, axis=3)
         thresh = tf.reduce_min(max_values, axis=3, keepdims=True)
