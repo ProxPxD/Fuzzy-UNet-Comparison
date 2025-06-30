@@ -43,7 +43,7 @@ class FuzzyLayer(Layer):
             self.A = self.create_transformation_matrix(init_centers, init_scales)
         self.ta = None
         if self.input_dim and self.output_dim:
-            self.b_r = self.create_bias_component()
+            self.b = self.create_bias_component()
 
     def create_transformation_matrix(self, init_scales, init_centers):
         """
@@ -76,8 +76,8 @@ class FuzzyLayer(Layer):
                     [[[0, 0, 1]],
                      [[0, 0, 1]]]
         """
-        column_tensor = tf.one_hot(self.input_dim, self.input_dim+1)
-        ones_tensor = tf.convert_to_tensor(np.array([column_tensor]*self.output_dim), dtype=tf.float32)
+        row = tf.one_hot(self.input_dim, self.input_dim+1)
+        ones_tensor = tf.convert_to_tensor(np.array([row]*self.output_dim), dtype=tf.float32)
         bias_component = tf.reshape(ones_tensor, (self.output_dim, 1, self.input_dim+1))
         return tf.Variable(bias_component)
 
@@ -92,12 +92,11 @@ class FuzzyLayer(Layer):
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
         if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
-            self.b_r = self.create_bias_component()
+            self.b = self.create_bias_component()
 
-        self.ta = self.concatenate_a_and_cr()
+        self.ta = self.concatenate_a_and_b()
 
-
-    def concatenate_a_and_cr(self):
+    def concatenate_a_and_b(self):
         """
         :return: Each slice looks like:
             [[s1, 0,  0,  c1],
@@ -105,7 +104,7 @@ class FuzzyLayer(Layer):
              [0,  0,  s3, c3]
              [0,  0,  0,  1]]
         """
-        return tf.concat([self.A, self.b_r], axis=1)
+        return tf.concat([self.A, self.b], axis=1)
 
     def call(self, X):
         """
