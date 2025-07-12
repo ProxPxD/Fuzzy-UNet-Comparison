@@ -41,9 +41,6 @@ class FuzzyLayer(Layer):
         self.input_dim = input_dim
         if init_centers and init_scales:
             self.A = self.create_transformation_matrix(init_centers, init_scales)
-        self.ta = None
-        if self.input_dim and self.output_dim:
-            self.b = self.create_bias_component()
 
     def create_transformation_matrix(self, init_scales, init_centers):
         """
@@ -59,52 +56,18 @@ class FuzzyLayer(Layer):
 
         diags = [np.insert(np.diag(s), self.input_dim, c, axis=1) for s, c in zip(init_scales, init_centers)]
         a = tf.convert_to_tensor(np.array(diags), dtype=tf.float32)
-        return tf.Variable(a)
-
-    def create_bias_component(self):
-        """Constructs the bias component for a fuzzy affine transformation matrix.
-
-        The bias component is a constant tensor appended to the scaling matrix `self.A`
-        to form a combined transformation matrix `self.ta`. This matrix is used to compute
-        fuzzy memberships by scaling and shifting input data in homogeneous coordinates.
-
-        Returns:
-            tf.Variable: A tensor of shape `(output_dim, 1, input_dim + 1)`, where:
-                - The last column is `[0, 0, ..., 1]` (homogeneous coordinate).
-                - The remaining columns are zero (initialized bias terms).
-                Example for `input_dim=2`, `output_dim=2`:
-                    [[[0, 0, 1]],
-                     [[0, 0, 1]]]
-        """
-        row = tf.one_hot(self.input_dim, self.input_dim+1)
-        ones_tensor = tf.convert_to_tensor(np.array([row]*self.output_dim), dtype=tf.float32)
-        bias_component = tf.reshape(ones_tensor, (self.output_dim, 1, self.input_dim+1))
-        return tf.Variable(bias_component)
+        return a
 
     def build(self, input_shape):
-        if input_changed := not self.input_dim:
+        if not self.input_dim:
             self.input_dim = input_shape[-1]
-        if output_changed := not self.output_dim:
+        if not self.output_dim:
             self.output_dim = self.input_dim
 
         if not hasattr(self, 'A'):  # Initialize transformation matrix randomly
             init_centers = tf.random.normal((self.output_dim, self.input_dim))
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
-        if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
-            self.b = self.create_bias_component()
-
-        self.ta = self.concatenate_a_and_b()
-
-    def concatenate_a_and_b(self):
-        """
-        :return: Each slice looks like:
-            [[s1, 0,  0,  c1],
-             [0,  s2, 0,  c2],
-             [0,  0,  s3, c3]
-             [0,  0,  0,  1]]
-        """
-        return tf.concat([self.A, self.b], axis=1)
 
     def call(self, X):
         """
@@ -119,8 +82,8 @@ class FuzzyLayer(Layer):
         """
         X_with_ones = self.insert_ones(X)  # step 1
         tx = tf.transpose(X_with_ones, perm=[1, 0])  # step 2
-        mul = self.ta @ tx  # step 3
-        exponents = tf.norm(mul[:, :self.input_dim], axis=1)  # step 4
+        mul = self.A @ tx  # step 3
+        exponents = tf.norm(mul, axis=1)  # step 4
         memberships = tf.exp(-exponents)  # step 5
         transposed = tf.transpose(tf.expand_dims(memberships, axis=0))  # step 6
         return transposed

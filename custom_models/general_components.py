@@ -1,13 +1,11 @@
 import logging
 from itertools import repeat
-from itertools import repeat
 from typing import Optional, Sequence, Iterable, Tuple, Union
 
 import keras.backend as K
 from keras import Sequential, Model
-from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, ReLU, Lambda
-from keras.src.layers import Dense, Flatten
-from more_itertools import interleave, pairwise, last, padded, repeatfunc, flatten
+from keras.layers import Layer, Conv2D, MaxPooling2D, UpSampling2D, ReLU, Lambda, Dense, Flatten
+from more_itertools import interleave, pairwise, last, padded, repeatfunc
 from toolz import compose_left as pipe
 
 from custom_models.utils import repeat_last_up_to, to_list

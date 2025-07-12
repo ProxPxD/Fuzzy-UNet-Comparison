@@ -1,7 +1,6 @@
 import logging
 import operator as op
 from functools import reduce
-from typing import Any
 
 import numpy as np
 import tensorflow as tf
@@ -63,7 +62,7 @@ class FuzzyLayer(Layer):
 
         diags = [np.insert(np.diag(s), self.input_dim, c, axis=1) for s, c in zip(init_scales, init_centers)]
         a = tf.convert_to_tensor(np.array(diags), dtype=tf.float32)
-        return tf.Variable(a)
+        return a
 
     def create_semi_widths(self):
         """
@@ -105,24 +104,11 @@ class FuzzyLayer(Layer):
             init_scales = tf.ones((self.output_dim, self.input_dim))
             self.A = self.create_transformation_matrix(init_centers, init_scales)
         logging.debug(f'BUILT {self.A.shape = }')
-        if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
-            self.c_r = self.create_semi_widths()
-        logging.debug(f'BUILT {self.c_r.shape = }')
-
-        self.ta = self.concatenate_a_and_cr()
-        logging.debug(f'BUILT {self.ta.shape = }')
+        # if input_changed or output_changed or not hasattr(self, 'c_r'):  # Equivalent to hasattr(self, 'c_r')
+        #     self.c_r = self.create_semi_widths()
+        # logging.debug(f'BUILT {self.c_r.shape = }')
 
         logging.debug('')
-
-    def concatenate_a_and_cr(self):
-        """
-        :return: Each slice looks like:
-            [[s1, 0,  0,  c1],
-             [0,  s2, 0,  c2],
-             [0,  0,  s3, c3]
-             [0,  0,  0,  1]]
-        """
-        return tf.concat([self.A, self.c_r], axis=1)
 
     def call(self, X):
         logging.debug(f'{X.shape = }')
@@ -130,9 +116,10 @@ class FuzzyLayer(Layer):
         logging.debug(f'{X_with_ones.shape = }')
         tx = tf.transpose(X_with_ones, perm=[1, 0])
         logging.debug(f'{tx.shape = }')
-        mul = self.ta @ tx
+        mul = self.A @ tx
         logging.debug(f'{mul.shape = }')
-        exponents = tf.norm(mul[:, :self.input_dim], axis=1)
+        logging.debug(f'{mul[:, :self.input_dim].shape = }')
+        exponents = tf.norm(mul, axis=1)
         logging.debug(f'{exponents.shape = }')
         memberships = tf.exp(-exponents)
         logging.debug(f'{memberships.shape = }')
