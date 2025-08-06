@@ -268,7 +268,7 @@ class FuzzyPooling(Layer):
 
         # Initialize pooling output tensor
         # joining channels and batch_size for simplicity
-        pooled = tf.zeros([batch_size * channels * (self.n_tiles and 1), *self.output_size, 1])
+        pooled = tf.zeros([batch_size * channels * self.n_tiles, *self.output_size, 1])
 
         # Apply hierarchical pooling strategies:
         # Priority 1: Membership-certain regions → Simple mean pooling
