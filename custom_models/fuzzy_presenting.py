@@ -283,8 +283,8 @@ class FuzzyPooling(Layer):
         # Extract uncertain regions and their membership weights
         tiled_m_uncertain = self.tile(m_uncertain, shape=(count, *self.output_size, self.n_tiles))
 
-        region = tf.boolean_mask(x, tiled_m_uncertain)  # Region
-        g = tf.boolean_mask(avg_pi, tiled_m_uncertain)  # g
+        region = tf.boolean_mask(x, tiled_m_uncertain)
+        g = tf.boolean_mask(avg_pi, tiled_m_uncertain)
 
         # Compute denoised values: Σ(g*region)/Σg
         denoised = tf.reduce_sum(g*region, axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
