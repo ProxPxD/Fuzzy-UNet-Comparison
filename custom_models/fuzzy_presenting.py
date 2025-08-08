@@ -281,10 +281,13 @@ class FuzzyPooling(Layer):
         count = tf.reduce_sum(tf.cast(m_uncertain, tf.float32))
 
         # Extract uncertain regions and their membership weights
-        tiled_m_uncertain = self.tile(m_uncertain, shape=(count, *self.output_size, self.n_tiles))
+        tiled_m_uncertain = tf.tile(m_uncertain, [1, 1, 1, self.n_tiles])
 
         region = tf.boolean_mask(x, tiled_m_uncertain)
         g = tf.boolean_mask(avg_pi, tiled_m_uncertain)
+
+        region = tf.reshape(region, [count, self.n_tiles])
+        g = tf.reshape(g, [count, self.n_tiles])
 
         # Compute denoised values: Σ(g*region)/Σg
         denoised = tf.reduce_sum(g*region, axis=-1, keepdims=True) / tf.reduce_sum(g, axis=-1, keepdims=True)
@@ -292,7 +295,7 @@ class FuzzyPooling(Layer):
 
         # Update pooled output with denoised values
         indices = tf.where(m_uncertain)
-        pooled = tf.tensor_scatter_nd_update(pooled, indices, denoised)
+        pooled = tf.tensor_scatter_nd_update(pooled, indices, tf.squeeze(denoised, axis=-1))
 
         # [Stage 5: Output Reconstruction]
         # Restore original batch and channel dimensions
